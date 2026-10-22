@@ -1,0 +1,40 @@
+name: Desktop build
+
+on:
+  pull_request:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish a release to Fozmu/fs-editor-releases'
+        type: boolean
+        default: false
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Build installer
+        if: ${{ !(startsWith(github.ref, 'refs/tags/v') || inputs.publish) }}
+        run: npx electron-builder --win --x64 --publish never
+      - name: Build and publish release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') || inputs.publish }}
+        run: npx electron-builder --win --x64 --publish always
+        env:
+          # Fine-grained token with Contents: read & write on Fozmu/fs-editor-releases
+          GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FS-Editor-Windows
+          path: |
+            release/*.exe
+            release/latest.yml
+          if-no-files-found: error

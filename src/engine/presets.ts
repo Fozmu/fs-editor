@@ -74,7 +74,7 @@ export const TEXT_PRESETS: TextPreset[] = [
   { name: 'Subtitle', style: { content: 'Subtitle text', size: 64, weight: 500 }, props: { y: 380 }, transIn: 'fade', transOut: 'fade' },
   {
     name: 'Lower Third',
-    style: { content: 'Daniel Dziubek\nFozmu Studios', size: 54, weight: 700, align: 'left', boxEnabled: true, boxColor: 'rgba(124,92,255,0.92)', boxRadius: 8, boxPadding: 22 },
+    style: { content: 'Daniel Dziubek\nFozmu Studios', size: 54, weight: 700, align: 'left', boxEnabled: true, boxColor: 'rgba(19,212,124,0.92)', boxRadius: 8, boxPadding: 22 },
     props: { x: -560, y: 330 },
     transIn: 'slideRight',
     transOut: 'slideLeft',

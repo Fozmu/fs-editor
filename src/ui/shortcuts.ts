@@ -216,5 +216,7 @@ export function runCommand(cmd: string) {
       return st.addMarker();
     case 'shortcuts':
       return st.set({ dialog: 'shortcuts' });
+    case 'tour':
+      return st.set({ dialog: 'tour' });
   }
 }

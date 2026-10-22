@@ -9,6 +9,8 @@ import { Timeline } from './ui/Timeline';
 import { Dialogs } from './ui/Dialogs';
 import { ContextMenu, MOD, Toasts } from './ui/common';
 import { Icon } from './ui/Icon';
+import { Logo } from './ui/Logo';
+import { shouldShowTour, Tour } from './ui/Tour';
 import { installShortcuts } from './ui/shortcuts';
 import { importViaPicker } from './ui/actions';
 import { DesktopUI } from './ui/DesktopUI';
@@ -115,6 +117,10 @@ export default function App() {
   useEffect(() => installShortcuts(), []);
 
   useEffect(() => {
+    if (ready && shouldShowTour()) useStore.setState({ dialog: 'tour' });
+  }, [ready]);
+
+  useEffect(() => {
     // Block the browser from opening files dropped outside drop targets.
     const over = (e: DragEvent) => {
       if (e.dataTransfer?.types.includes('Files')) {
@@ -151,7 +157,9 @@ export default function App() {
     >
       <header className="topbar">
         <div className="brand">
-          <div className="brand-badge">FS</div>
+          <div className="brand-badge">
+            <Logo size={18} />
+          </div>
           F.S. Editor <small>by Fozmu Studios</small>
         </div>
         <input
@@ -183,6 +191,9 @@ export default function App() {
           <button className="ibtn" onClick={() => useStore.setState({ dialog: 'settings' })} title="Sequence settings">
             <Icon name="settings" />
           </button>
+          <button className="ibtn" onClick={() => useStore.setState({ dialog: 'tour' })} title="Show tutorial">
+            <Icon name="sparkle" />
+          </button>
           <button className="ibtn" onClick={() => useStore.setState({ dialog: 'shortcuts' })} title="Keyboard shortcuts (?)">
             <Icon name="keyboard" />
           </button>
@@ -202,6 +213,7 @@ export default function App() {
       <ContextMenu />
       <Toasts />
       <DesktopUI />
+      <Tour />
     </div>
   );
 }

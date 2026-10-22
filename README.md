@@ -12,6 +12,25 @@ npm run build    # static build in dist/ (deploy anywhere, e.g. Netlify)
 
 Best in Chrome / Edge (WebCodecs + H.264/AAC encoding). Firefox works with WebM export.
 
+## Desktop app (Windows)
+
+```bash
+npm run dev:desktop   # Electron + Vite dev server
+npm run dist:win      # Windows installer in release/
+```
+
+The desktop build adds a bundled **ffmpeg**: any format imports (unsupported codecs are converted to an edit proxy automatically), and export gains x264 HQ, H.265, ProRes 422 HQ and GIF. Media is referenced from disk, projects save as `.fsproj` files (double-click to open), and the app auto-updates.
+
+### Releasing
+
+1. Bump `version` in `package.json`.
+2. Push a tag: `git tag v1.0.1 && git push origin v1.0.1`.
+3. GitHub Actions builds the installer and publishes it to [Fozmu/fs-editor-releases](https://github.com/Fozmu/fs-editor-releases); installed apps update themselves.
+
+Needs repo secret `RELEASES_TOKEN`: a fine-grained token with **Contents: read & write** on `Fozmu/fs-editor-releases`.
+
+Every pull request also builds the installer — download it from the workflow run's **Artifacts**.
+
 ## Features
 
 **Project & media**
@@ -55,5 +74,4 @@ src/store.ts  Zustand store with undo history
 
 ## Roadmap
 
-- Desktop app (Electron, Windows installer) with native ffmpeg export
 - Chroma key, LUT import, audio effects (EQ, compressor), multicam, proxies

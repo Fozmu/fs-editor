@@ -194,6 +194,7 @@ function buildMenu() {
     {
       label: 'Help',
       submenu: [
+        { label: 'Show Tutorial', click: cmd('tour') },
         { label: 'Keyboard Shortcuts', accelerator: '?', ...noAccel, click: cmd('shortcuts') },
         { label: 'Check for Updates…', click: () => checkForUpdates(true) },
         { type: 'separator' },
@@ -400,7 +401,7 @@ function registerIpc() {
     if (!fh) throw new Error('File not open');
     await fh.write(Buffer.from(data.buffer, data.byteOffset, data.byteLength), 0, data.byteLength, position);
   });
-  ipcMain.handle('file:close', async (_e, id, remove) => {
+  ipcMain.handle('file:close', async (_e, id) => {
     const fh = openFiles.get(id);
     openFiles.delete(id);
     if (!fh) return;

@@ -61,7 +61,7 @@ export function makeClip(kind: ClipKind, trackId: string, start: number, dur: nu
     transIn: { ...NO_TRANSITION },
     transOut: { ...NO_TRANSITION },
     text: kind === 'text' ? { ...DEFAULT_TEXT } : undefined,
-    color: kind === 'solid' ? '#7c5cff' : undefined,
+    color: kind === 'solid' ? '#13d47c' : undefined,
     ...extra,
   };
 }
