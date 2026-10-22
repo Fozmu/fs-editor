@@ -25,9 +25,8 @@ The desktop build adds a bundled **ffmpeg**: any format imports (unsupported cod
 
 ### Releasing
 
-1. Bump `version` in `package.json`.
-2. Push a tag: `git tag v1.0.1 && git push origin v1.0.1`.
-3. GitHub Actions builds the installer and publishes it to [Fozmu/fs-editor-releases](https://github.com/Fozmu/fs-editor-releases); installed apps update themselves.
+1. Bump `version` in `package.json` and merge to `main`.
+2. GitHub Actions builds the installer and publishes it to [Fozmu/fs-editor-releases](https://github.com/Fozmu/fs-editor-releases) (a version that's already released is skipped); installed apps update themselves.
 
 Needs repo secret `RELEASES_TOKEN`: a fine-grained token with **Contents: read & write** on `Fozmu/fs-editor-releases`.
 
