@@ -1,5 +1,7 @@
 # F.S. Editor — Fozmu Studios
 
+**Live: https://editor.fozmu.com** · Windows app: [releases](https://github.com/Fozmu/fs-editor-releases/releases/latest)
+
 Non-linear video editor that runs fully in the browser. No AI, no server: media stays on the device, editing and export run locally (Canvas + Web Audio + WebCodecs via [mediabunny](https://mediabunny.dev)).
 
 ## Run
