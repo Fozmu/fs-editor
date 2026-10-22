@@ -1,5 +1,5 @@
-import { useStore } from '../store';
-import type { Clip, Ease, FitMode, TextStyle, TransitionType } from '../types';
+import { pipProps, useStore, type PipCorner } from '../store';
+import type { Clip, Ease, FitMode, MaskShape, TextStyle, TransitionType } from '../types';
 import { groupsFor, PROP_DEFS, propAt, STATIC_PROPS, type PropDef } from '../engine/props';
 import { BLEND_MODES, COLOR_KEYS, COLOR_PRESETS, FONTS, TRANSITIONS } from '../engine/presets';
 import { formatTC, maxDurFor, projectDuration } from '../engine/project';
@@ -200,6 +200,8 @@ function ClipInspector({ clip }: { clip: Clip }) {
 
       {clip.kind === 'text' && clip.text && <TextSection clip={clip} />}
 
+      {(clip.kind === 'video' || clip.kind === 'image') && <PipSection clip={clip} lt={lt} />}
+
       {groups.map((g) => (
         <Section
           key={g}
@@ -330,6 +332,91 @@ function PropRow({ clip, def, lt }: { clip: Clip; def: PropDef; lt: number }) {
         </div>
       )}
     </>
+  );
+}
+
+const CORNERS: PipCorner[] = ['tl', 'tc', 'tr', 'ml', 'mc', 'mr', 'bl', 'bc', 'br'];
+const SHAPES: { name: string; mask: MaskShape; radius: number }[] = [
+  { name: 'Square', mask: 'none', radius: 0 },
+  { name: 'Rounded', mask: 'none', radius: 48 },
+  { name: 'Circle', mask: 'circle', radius: 0 },
+  { name: 'Heart', mask: 'heart', radius: 0 },
+  { name: 'Star', mask: 'star', radius: 0 },
+];
+
+/** InShot-style picture-in-picture: corner placement, size, mask shape and outline. */
+function PipSection({ clip, lt }: { clip: Clip; lt: number }) {
+  const st = useStore.getState;
+  const scale = propAt(clip, 'scale', lt);
+  const x = propAt(clip, 'x', lt);
+  const y = propAt(clip, 'y', lt);
+  const border = propAt(clip, 'border', lt);
+  const radius = propAt(clip, 'radius', lt);
+  const mask = clip.mask ?? 'none';
+  const sgn = (v: number) => (Math.abs(v) < 1 ? 0 : Math.sign(v));
+  const corner = (['t', 'm', 'b'][sgn(y) + 1] + ['l', 'c', 'r'][sgn(x) + 1]) as PipCorner;
+  const place = (cn: PipCorner, size: number) => {
+    const s = st();
+    const v = pipProps(s.project, clip, cn, size);
+    s.beginGesture();
+    s.setProp(clip.id, 'scale', v.scale);
+    s.setProp(clip.id, 'x', v.x);
+    s.setProp(clip.id, 'y', v.y);
+    s.endGesture();
+  };
+  const setShape = (sh: (typeof SHAPES)[number]) => {
+    const s = st();
+    s.beginGesture();
+    s.updateClip(clip.id, (c) => void (c.mask = sh.mask));
+    s.setProp(clip.id, 'radius', sh.radius);
+    s.endGesture();
+  };
+  const shapeOn = (sh: (typeof SHAPES)[number]) => (sh.mask !== 'none' ? mask === sh.mask : mask === 'none' && (sh.radius ? radius > 0 : radius === 0));
+  return (
+    <Section title="Picture in Picture">
+      <div className="row plain">
+        <label>Position</label>
+        <div className="pip-grid">
+          {CORNERS.map((cn) => (
+            <button key={cn} className={scale < 100 && corner === cn ? 'on' : ''} title={`Move to ${cn}`} onClick={() => place(cn, scale < 100 ? scale : 35)}>
+              <span />
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="row plain">
+        <label>Size</label>
+        <div className="chip-row">
+          {[25, 35, 50, 75, 100].map((sz) => (
+            <button key={sz} className={'chip' + (Math.abs(scale - sz) < 0.05 ? ' on' : '')} onClick={() => place(sz === 100 ? 'mc' : corner, sz)}>
+              {sz}%
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="row plain">
+        <label>Shape</label>
+        <div className="chip-row">
+          {SHAPES.map((sh) => (
+            <button key={sh.name} className={'chip' + (shapeOn(sh) ? ' on' : '')} onClick={() => setShape(sh)}>
+              {sh.name}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="row plain">
+        <label>Border</label>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 60px', gap: 4 }}>
+          <input
+            type="color"
+            value={toHex(clip.borderColor ?? '#ffffff')}
+            onChange={(e) => st().updateClip(clip.id, (c) => void (c.borderColor = e.target.value), false)}
+            onBlur={() => st().updateClip(clip.id, () => {})}
+          />
+          <NumField value={border} min={0} max={400} step={1} digits={0} onChange={(v, f) => st().setProp(clip.id, 'border', v, f)} />
+        </div>
+      </div>
+    </Section>
   );
 }
 

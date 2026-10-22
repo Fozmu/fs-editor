@@ -28,6 +28,7 @@ export const PROP_DEFS: PropDef[] = [
   { key: 'cropT', label: 'Crop Top', group: 'crop', min: 0, max: 100, step: 0.1, def: 0, unit: '%' },
   { key: 'cropB', label: 'Crop Bottom', group: 'crop', min: 0, max: 100, step: 0.1, def: 0, unit: '%' },
   { key: 'radius', label: 'Corner Radius', group: 'crop', min: 0, max: 2000, step: 1, def: 0, unit: 'px', sliderMax: 400 },
+  { key: 'border', label: 'Border', group: 'crop', min: 0, max: 400, step: 1, def: 0, unit: 'px', sliderMax: 60 },
 
   { key: 'brightness', label: 'Brightness', group: 'color', min: 0, max: 300, step: 1, def: 100, unit: '%', sliderMax: 200 },
   { key: 'contrast', label: 'Contrast', group: 'color', min: 0, max: 300, step: 1, def: 100, unit: '%', sliderMax: 200 },
@@ -50,6 +51,9 @@ export const PROP_DEFS: PropDef[] = [
 ];
 
 export const PROP_MAP: Record<string, PropDef> = Object.fromEntries(PROP_DEFS.map((d) => [d.key, d]));
+
+/** Props keyed together by the viewer's keyframe button (InShot-style). */
+export const MOTION_KEYS = ['x', 'y', 'scale', 'rotation', 'opacity'];
 
 /** Props whose keyframes are not supported (durations). */
 export const STATIC_PROPS = new Set(['fadeIn', 'fadeOut']);

@@ -621,6 +621,45 @@ input[type='color'] {
 .kf-nav button.on {
   color: var(--accent2);
 }
+.kf-nav button:disabled {
+  opacity: 0.35;
+}
+.pip-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 22px);
+  gap: 3px;
+  padding: 3px;
+  background: var(--bg3);
+  border-radius: 4px;
+  width: max-content;
+}
+.pip-grid button {
+  height: 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 2px;
+}
+.pip-grid button span {
+  width: 8px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--tx2);
+}
+.pip-grid button:hover span {
+  background: var(--tx0);
+}
+.pip-grid button.on span {
+  background: var(--accent2);
+}
+.viewer-kf {
+  margin-left: 6px;
+  padding-left: 6px;
+  border-left: 1px solid var(--line2);
+}
+.viewer-kf button {
+  width: 22px;
+  height: 26px;
+}
 .sw {
   width: 18px;
   height: 18px;
@@ -916,14 +955,19 @@ input[type='color'] {
 }
 .clip .kfdot {
   position: absolute;
-  bottom: 3px;
-  width: 7px;
-  height: 7px;
-  margin-left: -3.5px;
+  bottom: 2px;
+  width: 9px;
+  height: 9px;
+  margin-left: -4.5px;
   background: var(--warn);
+  border: 1px solid rgba(0, 0, 0, 0.5);
   transform: rotate(45deg);
-  pointer-events: none;
-  z-index: 2;
+  cursor: ew-resize;
+  z-index: 3;
+}
+.clip .kfdot:hover,
+.clip .kfdot.on {
+  background: #fff;
 }
 .playhead {
   position: absolute;
@@ -1212,6 +1256,46 @@ kbd {
   box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
   transition: left 0.25s ease, top 0.25s ease;
   animation: tin 0.2s ease-out;
+}
+.tour-card.whatsnew {
+  left: 50%;
+  top: 50%;
+  width: 420px;
+  max-width: calc(100vw - 32px);
+  transform: translate(-50%, -50%);
+  animation: none;
+}
+.wn-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.wn-feature {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  gap: 10px;
+  margin-top: 12px;
+}
+.wn-feature p {
+  margin: 3px 0 0;
+  color: var(--tx1);
+  line-height: 1.5;
+}
+.wn-ico {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--bg3);
+  color: var(--accent2);
 }
 .tour-logo {
   display: grid;
