@@ -9,9 +9,10 @@
   --tx0: #f1f2f4;
   --tx1: #b9bcc4;
   --tx2: #7e828c;
-  --accent: #7c5cff;
-  --accent2: #9d85ff;
-  --accentDim: rgba(124, 92, 255, 0.18);
+  --accent: #13d47c;
+  --accent2: #2aff98;
+  --accentDim: rgba(19, 212, 124, 0.16);
+  --onAccent: #03160c;
   --danger: #ff5c6c;
   --ok: #38d39f;
   --warn: #f5c542;
@@ -157,11 +158,10 @@ textarea {
   width: 24px;
   height: 24px;
   border-radius: 6px;
-  background: linear-gradient(135deg, var(--accent), #ff5ca8);
+  background: #000;
   display: grid;
   place-items: center;
-  font-size: 11px;
-  font-weight: 900;
+  padding: 3px;
 }
 .brand small {
   font-weight: 500;
@@ -209,6 +209,8 @@ textarea {
 }
 .btn.primary {
   background: var(--accent);
+  color: var(--onAccent);
+  font-weight: 600;
 }
 .btn.primary:hover {
   background: var(--accent2);
@@ -648,7 +650,7 @@ input[type='color'] {
 }
 .chip.on {
   background: var(--accent);
-  color: #fff;
+  color: var(--onAccent);
 }
 .seg {
   display: flex;
@@ -802,7 +804,7 @@ input[type='color'] {
   position: absolute;
   top: 0;
   height: 100%;
-  background: rgba(124, 92, 255, 0.22);
+  background: rgba(19, 212, 124, 0.2);
   border-left: 2px solid var(--accent);
   border-right: 2px solid var(--accent);
   pointer-events: none;
@@ -1033,7 +1035,7 @@ input[type='color'] {
 }
 .progress > div {
   height: 100%;
-  background: linear-gradient(90deg, var(--accent), #ff5ca8);
+  background: linear-gradient(90deg, #16643f, var(--accent2));
   transition: width 0.2s;
 }
 .note {
@@ -1136,6 +1138,7 @@ kbd {
 }
 .ctx-menu button:hover {
   background: var(--accent);
+  color: var(--onAccent);
 }
 .ctx-menu button:disabled {
   opacity: 0.4;
@@ -1161,4 +1164,87 @@ kbd {
   .split-v {
     display: none;
   }
+}
+
+/* ---------- desktop banners ---------- */
+.banner {
+  position: fixed;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg3);
+  border: 1px solid var(--line2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  z-index: 120;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+
+/* ---------- tutorial ---------- */
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+}
+.tour-dim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+}
+.tour-spot {
+  position: absolute;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
+  outline: 2px solid var(--accent);
+  transition: all 0.25s ease;
+  pointer-events: none;
+}
+.tour-card {
+  position: absolute;
+  width: 360px;
+  background: var(--bg2);
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
+  transition: left 0.25s ease, top 0.25s ease;
+  animation: tin 0.2s ease-out;
+}
+.tour-logo {
+  display: grid;
+  place-items: center;
+  margin: 4px 0 12px;
+}
+.tour-title {
+  font-weight: 800;
+  font-size: 16px;
+  margin-bottom: 6px;
+}
+.tour-body {
+  color: var(--tx1);
+  line-height: 1.55;
+}
+.tour-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+}
+.tour-dots {
+  display: flex;
+  gap: 4px;
+}
+.tour-dots span {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--bg4);
+  transition: width 0.2s;
+}
+.tour-dots span.on {
+  width: 16px;
+  background: var(--accent);
 }

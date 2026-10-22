@@ -224,7 +224,7 @@ function Titles() {
       <h4 style={{ marginTop: 16 }}>Generators</h4>
       <div className="lib-grid">
         <button className="lib-item" draggable onDragStart={(e) => e.dataTransfer.setData('application/x-fs-gen', 'solid')} onClick={() => useStore.getState().addGenerated('solid')}>
-          <div className="lib-swatch" style={{ background: '#7c5cff' }} />
+          <div className="lib-swatch" style={{ background: '#13d47c' }} />
           Color Matte
         </button>
         <button className="lib-item" draggable onDragStart={(e) => e.dataTransfer.setData('application/x-fs-gen', 'adjust')} onClick={() => useStore.getState().addGenerated('adjust')}>

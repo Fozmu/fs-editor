@@ -1,7 +1,6 @@
 import {
   ALL_FORMATS,
   AudioBufferSource,
-  BlobSource,
   BufferTarget,
   CanvasSink,
   CanvasSource,
@@ -21,13 +20,26 @@ import {
   type WrappedCanvas,
 } from 'mediabunny';
 import type { Clip, Project } from '../types';
+import { desktop, type FfmpegCodec } from '../desktop';
 import { clipGain, clipPan, hasAudio } from './audio';
-import { getAudioBuffer, getEntry } from './media';
+import { getAudioBuffer, getEntry, mbSource, type MediaEntry } from './media';
 import { clipEnd, projectDuration, visualLayersAt } from './project';
 import { fontString, renderFrame, type Source, type SourceProvider } from './render';
 
+/** mp4/webm: WebCodecs (browser + desktop). The rest: native ffmpeg (desktop only). */
+export type ExportFormat = 'mp4' | 'webm' | 'prores' | 'h265' | 'h264x' | 'gif';
+
+export const FORMAT_INFO: Record<ExportFormat, { label: string; ext: string; desktop?: boolean; audio: boolean; ffmpeg?: FfmpegCodec }> = {
+  mp4: { label: 'MP4 · H.264', ext: 'mp4', audio: true },
+  webm: { label: 'WebM · VP9', ext: 'webm', audio: true },
+  h264x: { label: 'MP4 · x264 HQ', ext: 'mp4', desktop: true, audio: true, ffmpeg: 'h264' },
+  h265: { label: 'MP4 · H.265', ext: 'mp4', desktop: true, audio: true, ffmpeg: 'h265' },
+  prores: { label: 'MOV · ProRes 422 HQ', ext: 'mov', desktop: true, audio: true, ffmpeg: 'prores' },
+  gif: { label: 'GIF', ext: 'gif', desktop: true, audio: false, ffmpeg: 'gif' },
+};
+
 export interface ExportSettings {
-  format: 'mp4' | 'webm';
+  format: ExportFormat;
   scale: number;
   fps: number;
   quality: 'low' | 'medium' | 'high' | 'very_high';
@@ -68,8 +80,8 @@ interface ClipDecoder {
   close(): void;
 }
 
-async function makeSinkDecoder(blob: Blob, times: number[], maxW: number, maxH: number): Promise<ClipDecoder | null> {
-  const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+async function makeSinkDecoder(entry: MediaEntry, times: number[], maxW: number, maxH: number): Promise<ClipDecoder | null> {
+  const input = new Input({ source: mbSource(entry), formats: ALL_FORMATS });
   const track = await input.getPrimaryVideoTrack();
   if (!track || !(await track.canDecode())) {
     input.dispose();
@@ -166,76 +178,85 @@ function sliceBuffer(buf: AudioBuffer, from: number, to: number): AudioBuffer {
 
 /* ---------------- main ---------------- */
 
-export async function pickSaveFile(name: string, format: 'mp4' | 'webm'): Promise<FileSystemFileHandle | null> {
+/** Where the encoded file goes. */
+export type ExportTarget = { kind: 'download' } | { kind: 'handle'; handle: FileSystemFileHandle } | { kind: 'path'; path: string };
+
+export async function pickSaveFile(name: string, format: ExportFormat): Promise<ExportTarget | null> {
+  const info = FORMAT_INFO[format];
+  if (desktop) {
+    const path = await desktop.saveExportDialog({ name, ext: info.ext, label: info.label });
+    return path ? { kind: 'path', path } : null;
+  }
   const w = window as unknown as { showSaveFilePicker?: (o: unknown) => Promise<FileSystemFileHandle> };
-  if (!w.showSaveFilePicker) return null;
-  return w.showSaveFilePicker({
-    suggestedName: `${name}.${format}`,
-    types: [{ description: format.toUpperCase() + ' video', accept: { [format === 'mp4' ? 'video/mp4' : 'video/webm']: ['.' + format] } }],
-  });
+  if (!w.showSaveFilePicker) return { kind: 'download' };
+  try {
+    const handle = await w.showSaveFilePicker({
+      suggestedName: `${name}.${info.ext}`,
+      types: [{ description: info.label, accept: { [format === 'webm' ? 'video/webm' : 'video/mp4']: ['.' + info.ext] } }],
+    });
+    return { kind: 'handle', handle };
+  } catch (e) {
+    if ((e as DOMException).name === 'AbortError') return null;
+    return { kind: 'download' };
+  }
 }
 
-export async function exportVideo(
-  p: Project,
-  s: ExportSettings,
-  onProgress: (pr: ExportProgress) => void,
-  signal: AbortSignal,
-  fileHandle: FileSystemFileHandle | null,
-): Promise<Blob | null> {
+/** A writable stream that writes positioned chunks to a local file through the desktop bridge. */
+async function desktopWritable(path: string): Promise<{ stream: WritableStream<StreamTargetChunk>; abort: () => Promise<void> }> {
+  const d = desktop!;
+  const id = await d.fileOpen(path);
+  let closed = false;
+  const close = async () => {
+    if (closed) return;
+    closed = true;
+    await d.fileClose(id);
+  };
+  return {
+    stream: new WritableStream<StreamTargetChunk>({
+      write: (c) => d.fileWrite(id, c.position, c.data),
+      close,
+    }),
+    abort: async () => {
+      await close();
+      await d.fileRemove(path);
+    },
+  };
+}
+
+interface Plan {
+  t0: number;
+  t1: number;
+  W: number;
+  H: number;
+  fps: number;
+  frames: number;
+}
+
+async function prepare(p: Project, s: ExportSettings, onProgress: (pr: ExportProgress) => void): Promise<Plan> {
   const [t0, t1] = exportRange(p, s);
   if (t1 - t0 <= 0) throw new Error('Nothing to export — the timeline (or In/Out range) is empty.');
   const [W, H] = exportSize(p, s.scale);
-  const fps = s.fps;
-  const frames = Math.max(1, Math.round((t1 - t0) * fps));
-
   onProgress({ stage: 'Preparing fonts', frac: 0 });
   await document.fonts.ready;
   await Promise.all(
     p.clips.filter((c) => c.kind === 'text' && c.text).map((c) => document.fonts.load(fontString(c.text!), c.text!.content).catch(() => [])),
   );
+  return { t0, t1, W, H, fps: s.fps, frames: Math.max(1, Math.round((t1 - t0) * s.fps)) };
+}
 
-  const format = s.format === 'mp4' ? new Mp4OutputFormat({ fastStart: fileHandle ? false : 'in-memory' }) : new WebMOutputFormat();
-  const quality = QUALITIES[s.quality];
-  const vPrefs = s.format === 'mp4' ? (['avc', 'hevc', 'av1', 'vp9'] as const) : (['vp9', 'av1', 'vp8'] as const);
-  const videoCodec = await getFirstEncodableVideoCodec(
-    vPrefs.filter((c) => format.getSupportedVideoCodecs().includes(c)),
-    { width: W, height: H, quality },
-  );
-  if (!videoCodec) throw new Error(`This browser can't encode ${s.format.toUpperCase()} video at ${W}×${H}. Try WebM or a lower resolution.`);
-
-  let audio: AudioBuffer | null = null;
-  let audioCodec = null;
-  if (s.audio) {
-    const aPrefs = s.format === 'mp4' ? (['aac', 'opus'] as const) : (['opus', 'vorbis'] as const);
-    audioCodec = await getFirstEncodableAudioCodec(
-      aPrefs.filter((c) => format.getSupportedAudioCodecs().includes(c)),
-      { numberOfChannels: 2, sampleRate: SAMPLE_RATE, quality },
-    );
-    if (audioCodec) {
-      onProgress({ stage: 'Mixing audio', frac: 0 });
-      audio = await mixAudio(p, t0, t1, (f) => onProgress({ stage: 'Mixing audio', frac: f * 0.05 }));
-    }
-  }
-
-  let writable: FileSystemWritableFileStream | null = null;
-  let target: BufferTarget | StreamTarget;
-  if (fileHandle) {
-    writable = await fileHandle.createWritable();
-    target = new StreamTarget(writable as unknown as WritableStream<StreamTargetChunk>, { chunked: true });
-  } else target = new BufferTarget();
-
-  const output = new Output({ format, target });
-  const canvas = new OffscreenCanvas(W, H);
-  const ctx = canvas.getContext('2d', { alpha: false })!;
-  const vsrc = new CanvasSource(canvas, { codec: videoCodec, bitrate: quality, keyFrameInterval: 2 });
-  output.addVideoTrack(vsrc, { frameRate: fps });
-  let asrc: AudioBufferSource | null = null;
-  if (audio && audioCodec) {
-    asrc = new AudioBufferSource({ codec: audioCodec, bitrate: quality });
-    output.addAudioTrack(asrc);
-  }
-  await output.start();
-
+/**
+ * Renders every frame of the range into `ctx` and calls `onFrame` after each one.
+ * Video clips are decoded sequentially with WebCodecs (falling back to a seeking <video>).
+ */
+async function renderLoop(
+  p: Project,
+  pl: Plan,
+  ctx: OffscreenCanvasRenderingContext2D,
+  signal: AbortSignal,
+  onFrame: (i: number) => Promise<void>,
+  onProgress: (pr: ExportProgress) => void,
+) {
+  const { t0, fps, frames, W, H } = pl;
   // Plan which source timestamps each video clip needs, in frame order.
   const plan = new Map<string, { clip: Clip; times: number[]; last: number }>();
   for (let i = 0; i < frames; i++) {
@@ -256,10 +277,7 @@ export async function exportVideo(
   const provider: SourceProvider = {
     get: (clip) => (clip.kind === 'image' ? (getEntry(clip.mediaId)?.image ?? null) : (current.get(clip.id) ?? null)),
   };
-
   const started = performance.now();
-  let audioPos = 0;
-  const audioChunk = SAMPLE_RATE; // 1s
   try {
     for (let i = 0; i < frames; i++) {
       if (signal.aborted) throw new DOMException('Export canceled', 'AbortError');
@@ -271,58 +289,186 @@ export async function exportVideo(
         let d = decoders.get(c.id);
         if (!d) {
           const entry = getEntry(c.mediaId);
-          const pl = plan.get(c.id);
-          if (!entry || !pl) continue;
-          d = (await makeSinkDecoder(entry.blob, pl.times, W * 1.5, H * 1.5).catch(() => null)) ?? makeElementDecoder(entry.url, pl.times);
+          const cp = plan.get(c.id);
+          if (!entry || !cp) continue;
+          d = (await makeSinkDecoder(entry, cp.times, W * 1.5, H * 1.5).catch(() => null)) ?? makeElementDecoder(entry.url, cp.times);
           decoders.set(c.id, d);
         }
         current.set(c.id, await d.next());
       }
       renderFrame(ctx, p, t, provider, { outW: W, outH: H });
-      await vsrc.add(i / fps, 1 / fps);
-
-      for (const [id, pl] of plan) {
-        if (pl.last === i) {
+      await onFrame(i);
+      for (const [id, cp] of plan) {
+        if (cp.last === i) {
           decoders.get(id)?.close();
           decoders.delete(id);
           plan.delete(id);
         }
       }
-
-      if (asrc && audio) {
-        const want = Math.min(audio.length, Math.ceil(((i + 1) / fps) * SAMPLE_RATE) + audioChunk);
-        while (audioPos < want) {
-          const to = Math.min(audio.length, audioPos + audioChunk);
-          await asrc.add(sliceBuffer(audio, audioPos, to));
-          audioPos = to;
-        }
-      }
-
       if (i % 3 === 0) {
-        const frac = 0.05 + 0.93 * ((i + 1) / frames);
         const el = (performance.now() - started) / 1000;
-        onProgress({ stage: `Rendering frame ${i + 1} / ${frames}`, frac, eta: (el / (i + 1)) * (frames - i - 1) });
+        onProgress({ stage: `Rendering frame ${i + 1} / ${frames}`, frac: 0.05 + 0.93 * ((i + 1) / frames), eta: (el / (i + 1)) * (frames - i - 1) });
       }
     }
-    if (asrc && audio) {
-      while (audioPos < audio.length) {
-        const to = Math.min(audio.length, audioPos + audioChunk);
-        await asrc.add(sliceBuffer(audio, audioPos, to));
-        audioPos = to;
-      }
+  } finally {
+    for (const d of decoders.values()) d.close();
+  }
+}
+
+export async function exportVideo(
+  p: Project,
+  s: ExportSettings,
+  onProgress: (pr: ExportProgress) => void,
+  signal: AbortSignal,
+  dest: ExportTarget,
+): Promise<Blob | null> {
+  if (FORMAT_INFO[s.format].ffmpeg) {
+    if (dest.kind !== 'path') throw new Error('This format needs the desktop app.');
+    await exportFfmpeg(p, s, onProgress, signal, dest.path);
+    return null;
+  }
+  const pl = await prepare(p, s, onProgress);
+  const { W, H, fps } = pl;
+  const streamed = dest.kind !== 'download';
+  const format = s.format === 'mp4' ? new Mp4OutputFormat({ fastStart: streamed ? false : 'in-memory' }) : new WebMOutputFormat();
+  const quality = QUALITIES[s.quality];
+  const vPrefs = s.format === 'mp4' ? (['avc', 'hevc', 'av1', 'vp9'] as const) : (['vp9', 'av1', 'vp8'] as const);
+  const videoCodec = await getFirstEncodableVideoCodec(
+    vPrefs.filter((c) => format.getSupportedVideoCodecs().includes(c)),
+    { width: W, height: H, quality },
+  );
+  if (!videoCodec) throw new Error(`This browser can't encode ${s.format.toUpperCase()} video at ${W}×${H}. Try WebM or a lower resolution.`);
+
+  let audio: AudioBuffer | null = null;
+  let audioCodec = null;
+  if (s.audio) {
+    const aPrefs = s.format === 'mp4' ? (['aac', 'opus'] as const) : (['opus', 'vorbis'] as const);
+    audioCodec = await getFirstEncodableAudioCodec(
+      aPrefs.filter((c) => format.getSupportedAudioCodecs().includes(c)),
+      { numberOfChannels: 2, sampleRate: SAMPLE_RATE, quality },
+    );
+    if (audioCodec) {
+      onProgress({ stage: 'Mixing audio', frac: 0 });
+      audio = await mixAudio(p, pl.t0, pl.t1, (f) => onProgress({ stage: 'Mixing audio', frac: f * 0.05 }));
     }
+  }
+
+  let abortDest: () => Promise<void> = async () => {};
+  let target: BufferTarget | StreamTarget;
+  if (dest.kind === 'handle') {
+    const writable = await dest.handle.createWritable();
+    abortDest = () => writable.abort();
+    target = new StreamTarget(writable as unknown as WritableStream<StreamTargetChunk>, { chunked: true });
+  } else if (dest.kind === 'path') {
+    const w = await desktopWritable(dest.path);
+    abortDest = w.abort;
+    target = new StreamTarget(w.stream, { chunked: true });
+  } else target = new BufferTarget();
+
+  const output = new Output({ format, target });
+  const canvas = new OffscreenCanvas(W, H);
+  const ctx = canvas.getContext('2d', { alpha: false })!;
+  const vsrc = new CanvasSource(canvas, { codec: videoCodec, bitrate: quality, keyFrameInterval: 2 });
+  output.addVideoTrack(vsrc, { frameRate: fps });
+  let asrc: AudioBufferSource | null = null;
+  if (audio && audioCodec) {
+    asrc = new AudioBufferSource({ codec: audioCodec, bitrate: quality });
+    output.addAudioTrack(asrc);
+  }
+  await output.start();
+
+  let audioPos = 0;
+  const audioChunk = SAMPLE_RATE; // 1s
+  const pushAudio = async (upTo: number) => {
+    if (!asrc || !audio) return;
+    while (audioPos < upTo) {
+      const to = Math.min(audio.length, audioPos + audioChunk);
+      await asrc.add(sliceBuffer(audio, audioPos, to));
+      audioPos = to;
+    }
+  };
+  try {
+    await renderLoop(
+      p,
+      pl,
+      ctx,
+      signal,
+      async (i) => {
+        await vsrc.add(i / fps, 1 / fps);
+        if (audio) await pushAudio(Math.min(audio.length, Math.ceil(((i + 1) / fps) * SAMPLE_RATE) + audioChunk));
+      },
+      onProgress,
+    );
+    if (audio) await pushAudio(audio.length);
     onProgress({ stage: 'Finalizing', frac: 0.99 });
     await output.finalize();
   } catch (e) {
-    for (const d of decoders.values()) d.close();
     await output.cancel().catch(() => {});
-    if (writable) await writable.abort().catch(() => {});
+    await abortDest().catch(() => {});
     throw e;
   }
-  for (const d of decoders.values()) d.close();
   onProgress({ stage: 'Done', frac: 1 });
-  if (target instanceof BufferTarget) {
-    return new Blob([target.buffer!], { type: format.mimeType });
-  }
+  if (target instanceof BufferTarget) return new Blob([target.buffer!], { type: format.mimeType });
   return null;
+}
+
+/** Desktop: renders frames and pipes raw RGBA into a native ffmpeg encoder. */
+async function exportFfmpeg(p: Project, s: ExportSettings, onProgress: (pr: ExportProgress) => void, signal: AbortSignal, path: string) {
+  const d = desktop;
+  const info = FORMAT_INFO[s.format];
+  if (!d || !info.ffmpeg) throw new Error('This format needs the desktop app.');
+  const pl = await prepare(p, s, onProgress);
+  let wav: Uint8Array | undefined;
+  if (s.audio && info.audio) {
+    onProgress({ stage: 'Mixing audio', frac: 0 });
+    const mix = await mixAudio(p, pl.t0, pl.t1, (f) => onProgress({ stage: 'Mixing audio', frac: f * 0.05 }));
+    if (mix) wav = encodeWav(mix);
+  }
+  const job = await d.exportStart({ path, width: pl.W, height: pl.H, fps: pl.fps, codec: info.ffmpeg, audioWav: wav });
+  const canvas = new OffscreenCanvas(pl.W, pl.H);
+  const ctx = canvas.getContext('2d', { alpha: false, willReadFrequently: true })!;
+  try {
+    await renderLoop(p, pl, ctx, signal, async () => {
+      const img = ctx.getImageData(0, 0, pl.W, pl.H);
+      await d.exportFrame(job, new Uint8Array(img.data.buffer));
+    }, onProgress);
+    onProgress({ stage: 'Finalizing', frac: 0.99 });
+    await d.exportEnd(job);
+  } catch (e) {
+    await d.exportEnd(job, true).catch(() => {});
+    await d.fileRemove(path).catch(() => {});
+    throw e;
+  }
+  onProgress({ stage: 'Done', frac: 1 });
+}
+
+/** 16-bit PCM WAV. */
+export function encodeWav(buf: AudioBuffer): Uint8Array {
+  const ch = buf.numberOfChannels;
+  const n = buf.length;
+  const out = new DataView(new ArrayBuffer(44 + n * ch * 2));
+  const str = (o: number, t: string) => [...t].forEach((c, i) => out.setUint8(o + i, c.charCodeAt(0)));
+  str(0, 'RIFF');
+  out.setUint32(4, 36 + n * ch * 2, true);
+  str(8, 'WAVE');
+  str(12, 'fmt ');
+  out.setUint32(16, 16, true);
+  out.setUint16(20, 1, true);
+  out.setUint16(22, ch, true);
+  out.setUint32(24, buf.sampleRate, true);
+  out.setUint32(28, buf.sampleRate * ch * 2, true);
+  out.setUint16(32, ch * 2, true);
+  out.setUint16(34, 16, true);
+  str(36, 'data');
+  out.setUint32(40, n * ch * 2, true);
+  const data = Array.from({ length: ch }, (_, c) => buf.getChannelData(c));
+  let o = 44;
+  for (let i = 0; i < n; i++) {
+    for (let c = 0; c < ch; c++) {
+      const v = Math.max(-1, Math.min(1, data[c][i]));
+      out.setInt16(o, v < 0 ? v * 0x8000 : v * 0x7fff, true);
+      o += 2;
+    }
+  }
+  return new Uint8Array(out.buffer);
 }

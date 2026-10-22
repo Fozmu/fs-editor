@@ -1,6 +1,7 @@
 import type { MediaItem, TransitionType } from '../types';
 import { useStore } from '../store';
-import { detectKind, importFile } from '../engine/media';
+import { detectKind, importFile, importPath } from '../engine/media';
+import { desktop } from '../desktop';
 import { makeClip } from '../engine/project';
 import { textStyle, type TextPreset } from '../engine/presets';
 
@@ -35,8 +36,30 @@ export function pickFiles(accept = 'video/*,audio/*,image/*', multiple = true): 
 }
 
 export async function importViaPicker() {
+  if (desktop) {
+    const picked = await desktop.openMediaDialog(true);
+    if (picked.length) await importPaths(picked);
+    return;
+  }
   const files = await pickFiles();
   if (files.length) await importFiles(files);
+}
+
+/** Desktop: import files by path (no copy; media is referenced from disk). */
+export async function importPaths(list: { path: string; name: string; size: number }[]): Promise<MediaItem[]> {
+  const st = useStore.getState();
+  const out: MediaItem[] = [];
+  for (const f of list) {
+    try {
+      const m = await importPath(f.path, f.name, f.size);
+      out.push(m);
+      useStore.getState().addMedia([m]);
+    } catch (e) {
+      st.toast(`${f.name}: ${(e as Error).message}`, 'error');
+    }
+  }
+  if (out.length) st.toast(`Imported ${out.length} file${out.length > 1 ? 's' : ''}`);
+  return out;
 }
 
 export function addTextPreset(pr: TextPreset, at?: { trackId: string; time: number }) {

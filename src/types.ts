@@ -12,6 +12,10 @@ export interface MediaItem {
   height: number;
   hasAudio: boolean;
   addedAt: number;
+  /** Desktop: absolute path of the original file (media is referenced, not copied). */
+  path?: string;
+  /** Desktop: edit-friendly transcode used when Chromium can't decode the original. */
+  proxyPath?: string;
 }
 
 export type ClipKind = 'video' | 'audio' | 'image' | 'text' | 'solid' | 'adjust';
@@ -159,4 +163,6 @@ export interface Project {
   outPoint: number | null;
   createdAt: number;
   updatedAt: number;
+  /** Desktop: where this project was last saved as a .fsproj file. */
+  filePath?: string;
 }

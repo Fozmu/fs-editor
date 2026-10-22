@@ -9,8 +9,13 @@ import { Timeline } from './ui/Timeline';
 import { Dialogs } from './ui/Dialogs';
 import { ContextMenu, MOD, Toasts } from './ui/common';
 import { Icon } from './ui/Icon';
+import { Logo } from './ui/Logo';
+import { shouldShowTour, Tour } from './ui/Tour';
 import { installShortcuts } from './ui/shortcuts';
 import { importViaPicker } from './ui/actions';
+import { DesktopUI } from './ui/DesktopUI';
+import { saveProjectFile } from './ui/projectActions';
+import { desktop } from './desktop';
 
 function usePersistence() {
   const [ready, setReady] = useState(false);
@@ -106,9 +111,14 @@ export default function App() {
   const w = useStore((s) => s.project.width);
   const h = useStore((s) => s.project.height);
   const fps = useStore((s) => s.project.fps);
+  const filePath = useStore((s) => s.project.filePath);
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => installShortcuts(), []);
+
+  useEffect(() => {
+    if (ready && shouldShowTour()) useStore.setState({ dialog: 'tour' });
+  }, [ready]);
 
   useEffect(() => {
     // Block the browser from opening files dropped outside drop targets.
@@ -134,8 +144,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    document.title = `${name} — F.S. Editor`;
-  }, [name]);
+    document.title = `${name}${filePath ? ` (${filePath.split(/[\\/]/).pop()})` : ''} — F.S. Editor`;
+  }, [name, filePath]);
 
   if (!ready) return <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--tx2)' }}>Loading F.S. Editor…</div>;
 
@@ -147,7 +157,9 @@ export default function App() {
     >
       <header className="topbar">
         <div className="brand">
-          <div className="brand-badge">FS</div>
+          <div className="brand-badge">
+            <Logo size={18} />
+          </div>
           F.S. Editor <small>by Fozmu Studios</small>
         </div>
         <input
@@ -168,11 +180,19 @@ export default function App() {
           <button className="btn ghost" onClick={() => useStore.setState({ dialog: 'projects' })} title="Projects">
             <Icon name="folder" size={14} /> Projects
           </button>
+          {desktop && (
+            <button className="btn ghost" onClick={() => saveProjectFile(false)} title={`Save project (${MOD}+S)`}>
+              <Icon name="download" size={14} /> Save
+            </button>
+          )}
           <button className="btn ghost" onClick={importViaPicker} title={`Import media (${MOD}+I)`}>
             <Icon name="upload" size={14} /> Import
           </button>
           <button className="ibtn" onClick={() => useStore.setState({ dialog: 'settings' })} title="Sequence settings">
             <Icon name="settings" />
+          </button>
+          <button className="ibtn" onClick={() => useStore.setState({ dialog: 'tour' })} title="Show tutorial">
+            <Icon name="sparkle" />
           </button>
           <button className="ibtn" onClick={() => useStore.setState({ dialog: 'shortcuts' })} title="Keyboard shortcuts (?)">
             <Icon name="keyboard" />
@@ -192,6 +212,8 @@ export default function App() {
       <Dialogs />
       <ContextMenu />
       <Toasts />
+      <DesktopUI />
+      <Tour />
     </div>
   );
 }

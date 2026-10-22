@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
-import { exportRange, exportSize, exportVideo, pickSaveFile, type ExportProgress, type ExportSettings } from '../engine/export';
-import { formatTC, newProject } from '../engine/project';
+import { exportRange, exportSize, exportVideo, FORMAT_INFO, pickSaveFile, type ExportFormat, type ExportProgress, type ExportSettings } from '../engine/export';
+import { desktop } from '../desktop';
+import { formatTC } from '../engine/project';
 import { FPS_OPTIONS, RESOLUTIONS } from '../engine/presets';
 import { deleteProjectRecord, listProjects, saveProject } from '../engine/storage';
-import { restoreMedia } from '../engine/media';
+import { createProject, downloadProjectFile, openProject, openProjectDialog } from './projectActions';
 import type { Project } from '../types';
 import { Icon } from './Icon';
-import { downloadBlob, pickFiles } from './actions';
+import { downloadBlob } from './actions';
 import { MOD, Modal } from './common';
 
 export function Dialogs() {
@@ -28,7 +29,9 @@ function ExportDialog({ onClose }: { onClose: () => void }) {
   const project = useStore((s) => s.project);
   const [s, setS] = useState<ExportSettings>(() => {
     try {
-      return { format: 'mp4', scale: 1, quality: 'high', range: 'all', audio: true, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'), fps: project.fps };
+      const saved = { format: 'mp4', scale: 1, quality: 'high', range: 'all', audio: true, ...JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}'), fps: project.fps };
+      if (!FORMAT_INFO[saved.format as ExportFormat] || (FORMAT_INFO[saved.format as ExportFormat].desktop && !desktop)) saved.format = 'mp4';
+      return saved;
     } catch {
       return { format: 'mp4', scale: 1, fps: project.fps, quality: 'high', range: 'all', audio: true };
     }
@@ -37,6 +40,7 @@ function ExportDialog({ onClose }: { onClose: () => void }) {
   const [prog, setProg] = useState<ExportProgress | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
+  const [savedPath, setSavedPath] = useState<string | null>(null);
   const abort = useRef<AbortController | null>(null);
   const hasInOut = project.inPoint !== null || project.outPoint !== null;
   const [t0, t1] = exportRange(project, s);
@@ -55,20 +59,18 @@ function ExportDialog({ onClose }: { onClose: () => void }) {
     setErr(null);
     setDone(null);
     useStore.getState().setPlaying(false);
-    let handle: FileSystemFileHandle | null = null;
-    try {
-      handle = await pickSaveFile(name, s.format);
-    } catch (e) {
-      if ((e as DOMException).name === 'AbortError') return;
-    }
+    const dest = await pickSaveFile(name, s.format);
+    if (!dest) return;
+    setSavedPath(dest.kind === 'path' ? dest.path : null);
     const ac = new AbortController();
     abort.current = ac;
     setProg({ stage: 'Starting', frac: 0 });
     const t = performance.now();
     try {
-      const blob = await exportVideo(project, s, setProg, ac.signal, handle);
-      if (blob) downloadBlob(blob, `${name}.${s.format}`);
-      setDone(`Exported in ${((performance.now() - t) / 1000).toFixed(1)}s${handle ? ` to ${handle.name}` : ''}.`);
+      const blob = await exportVideo(project, s, setProg, ac.signal, dest);
+      if (blob) downloadBlob(blob, `${name}.${FORMAT_INFO[s.format].ext}`);
+      const where = dest.kind === 'handle' ? ` to ${dest.handle.name}` : dest.kind === 'path' ? ` to ${dest.path}` : '';
+      setDone(`Exported in ${((performance.now() - t) / 1000).toFixed(1)}s${where}.`);
     } catch (e) {
       if ((e as DOMException).name === 'AbortError') {
         setProg(null);
@@ -112,14 +114,15 @@ function ExportDialog({ onClose }: { onClose: () => void }) {
       </label>
       <div className="field">
         <span>Format</span>
-        <div className="seg">
-          <button className={s.format === 'mp4' ? 'on' : ''} onClick={() => upd({ format: 'mp4' })} disabled={running}>
-            MP4 (H.264 / AAC)
-          </button>
-          <button className={s.format === 'webm' ? 'on' : ''} onClick={() => upd({ format: 'webm' })} disabled={running}>
-            WebM (VP9 / Opus)
-          </button>
-        </div>
+        <select className="select" value={s.format} onChange={(e) => upd({ format: e.target.value as ExportFormat })} disabled={running}>
+          {(Object.keys(FORMAT_INFO) as ExportFormat[])
+            .filter((f) => desktop || !FORMAT_INFO[f].desktop)
+            .map((f) => (
+              <option key={f} value={f}>
+                {FORMAT_INFO[f].label}
+              </option>
+            ))}
+        </select>
       </div>
       <div className="field">
         <span>Resolution</span>
@@ -169,7 +172,9 @@ function ExportDialog({ onClose }: { onClose: () => void }) {
         <input type="checkbox" checked={s.audio} onChange={(e) => upd({ audio: e.target.checked })} disabled={running} /> Include audio
       </label>
       <div className="note">
-        {W}×{H} · {s.fps} fps · {formatTC(t1 - t0, s.fps)} · {Math.round((t1 - t0) * s.fps)} frames. Rendering runs locally with hardware encoding when available (WebCodecs).
+        {W}×{H} · {s.fps} fps · {formatTC(t1 - t0, s.fps)} · {Math.round((t1 - t0) * s.fps)} frames.{' '}
+        {FORMAT_INFO[s.format].ffmpeg ? 'Encoded with the built-in ffmpeg.' : 'Rendered locally with hardware encoding when available (WebCodecs).'}
+        {!FORMAT_INFO[s.format].audio && ' No audio in this format.'}
       </div>
       {prog && (
         <div>
@@ -181,7 +186,16 @@ function ExportDialog({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       )}
-      {done && <div style={{ color: 'var(--ok)' }}>✓ {done}</div>}
+      {done && (
+        <div style={{ color: 'var(--ok)', display: 'flex', gap: 8, alignItems: 'center' }}>
+          ✓ {done}
+          {savedPath && desktop && (
+            <button className="btn sm" onClick={() => desktop!.showItem(savedPath)}>
+              Show in folder
+            </button>
+          )}
+        </div>
+      )}
       {err && <div style={{ color: 'var(--danger)' }}>Export failed: {err}</div>}
     </Modal>
   );
@@ -282,34 +296,17 @@ function ProjectsDialog({ onClose }: { onClose: () => void }) {
   }, []);
 
   const open = async (p: Project) => {
-    await saveProject(useStore.getState().project);
-    useStore.getState().loadProject(p);
-    await restoreMedia(p.media);
+    await openProject(p);
     onClose();
   };
   const create = async () => {
-    await saveProject(useStore.getState().project);
-    const r = RESOLUTIONS.find((x) => x.name === preset)!;
-    const p = newProject('Untitled Project', r.w, r.h);
-    useStore.getState().loadProject(p);
-    await saveProject(p);
+    await createProject(RESOLUTIONS.find((x) => x.name === preset)!);
     onClose();
   };
-  const exportJson = (p: Project) => downloadBlob(new Blob([JSON.stringify(p, null, 1)], { type: 'application/json' }), `${p.name}.fsproj`);
+  const exportJson = (p: Project) => downloadProjectFile(p);
   const importJson = async () => {
-    const [f] = await pickFiles('.fsproj,.json,application/json', false);
-    if (!f) return;
-    try {
-      const p = JSON.parse(await f.text()) as Project;
-      if (!p.tracks || !p.clips) throw new Error('Not an F.S. Editor project');
-      p.id = Math.random().toString(36).slice(2, 12);
-      p.name += ' (imported)';
-      await saveProject(p);
-      await open(p);
-      useStore.getState().toast('Project imported — relink any offline media via right-click in Project Media');
-    } catch (e) {
-      useStore.getState().toast('Import failed: ' + (e as Error).message, 'error');
-    }
+    await openProjectDialog();
+    onClose();
   };
 
   return (
@@ -362,7 +359,11 @@ function ProjectsDialog({ onClose }: { onClose: () => void }) {
           </div>
         ))}
       </div>
-      <div className="note">Projects and imported media are stored in this browser (IndexedDB) and autosave continuously. Project files (.fsproj) contain the edit only; media is relinked on open.</div>
+      <div className="note">
+        {desktop
+          ? 'Projects autosave to the app library. Use File → Save to keep a .fsproj next to your footage; media is referenced from its original location.'
+          : 'Projects and imported media are stored in this browser (IndexedDB) and autosave continuously. Project files (.fsproj) contain the edit only; media is relinked on open.'}
+      </div>
     </Modal>
   );
 }
