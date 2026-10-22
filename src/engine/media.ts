@@ -1,11 +1,14 @@
-import { ALL_FORMATS, AudioBufferSink, BlobSource, CanvasSink, Input } from 'mediabunny';
+import { ALL_FORMATS, AudioBufferSink, BlobSource, CanvasSink, Input, UrlSource, type Source as MbSource } from 'mediabunny';
 import { create } from 'zustand';
 import type { MediaItem, MediaKind } from '../types';
+import { desktop, mediaUrl } from '../desktop';
+import { useStore } from '../store';
 import { uid } from './project';
 import { loadMediaBlob, saveMediaBlob } from './storage';
 
 export interface MediaEntry {
-  blob: Blob;
+  /** Web: the file contents. Desktop: undefined (read from disk via `url`). */
+  blob?: Blob;
   url: string;
   image?: HTMLImageElement;
   thumbs?: ImageBitmap[];
@@ -18,8 +21,16 @@ export interface MediaEntry {
 const registry = new Map<string, MediaEntry>();
 
 /** Bumps when async derived data (thumbs, waveforms) becomes available so the UI re-renders. */
-export const useMediaVersion = create<{ v: number; bump: () => void; offline: Record<string, boolean>; setOffline: (id: string, off: boolean) => void }>((set) => ({
+export const useMediaVersion = create<{
+  v: number;
+  bump: () => void;
+  offline: Record<string, boolean>;
+  setOffline: (id: string, off: boolean) => void;
+  /** Long-running media job (desktop proxy conversion). */
+  busy: { label: string; frac: number } | null;
+}>((set) => ({
   v: 0,
+  busy: null,
   bump: () => set((s) => ({ v: s.v + 1 })),
   offline: {},
   setOffline: (id, off) => set((s) => ({ offline: { ...s.offline, [id]: off } })),
@@ -29,14 +40,26 @@ const bump = () => useMediaVersion.getState().bump();
 
 export const getEntry = (id: string | undefined) => (id ? registry.get(id) : undefined);
 
+/** Fresh mediabunny source for an entry (blob in the browser, ranged reads from disk on desktop). */
+export function mbSource(e: MediaEntry): MbSource {
+  return e.blob ? new BlobSource(e.blob) : new UrlSource(e.url);
+}
+
+const releaseUrl = (url: string) => url.startsWith('blob:') && URL.revokeObjectURL(url);
+
 const VIDEO_EXT = /\.(mp4|m4v|mov|webm|mkv|avi|ogv|3gp)$/i;
 const AUDIO_EXT = /\.(mp3|wav|ogg|oga|m4a|aac|flac|opus|weba)$/i;
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|svg|avif)$/i;
 
-export function detectKind(f: File): MediaKind | null {
-  if (f.type.startsWith('video/') || VIDEO_EXT.test(f.name)) return 'video';
-  if (f.type.startsWith('audio/') || AUDIO_EXT.test(f.name)) return 'audio';
-  if (f.type.startsWith('image/') || IMAGE_EXT.test(f.name)) return 'image';
+// Containers Chromium can't open natively; on desktop they go through an ffmpeg proxy.
+const DESKTOP_VIDEO_EXT = /\.(mts|m2ts|mxf|wmv|flv|mpg|mpeg|vob|ts|dv)$/i;
+const DESKTOP_AUDIO_EXT = /\.(aiff?|wma|ac3|amr)$/i;
+
+export function detectKind(f: { name: string; type?: string }): MediaKind | null {
+  const type = f.type ?? '';
+  if (type.startsWith('video/') || VIDEO_EXT.test(f.name) || (desktop && DESKTOP_VIDEO_EXT.test(f.name))) return 'video';
+  if (type.startsWith('audio/') || AUDIO_EXT.test(f.name) || (desktop && DESKTOP_AUDIO_EXT.test(f.name))) return 'audio';
+  if (type.startsWith('image/') || IMAGE_EXT.test(f.name)) return 'image';
   return null;
 }
 
@@ -77,9 +100,9 @@ function loadImage(url: string): Promise<HTMLImageElement> {
   });
 }
 
-async function hasAudioTrack(blob: Blob): Promise<boolean> {
+async function hasAudioTrack(e: MediaEntry): Promise<boolean> {
   try {
-    const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+    const input = new Input({ source: mbSource(e), formats: ALL_FORMATS });
     const t = await input.getPrimaryAudioTrack();
     input.dispose();
     return !!t;
@@ -89,6 +112,8 @@ async function hasAudioTrack(blob: Blob): Promise<boolean> {
 }
 
 export async function importFile(file: File): Promise<MediaItem> {
+  const p = desktop?.pathForFile(file);
+  if (p) return importPath(p, file.name, file.size);
   const kind = detectKind(file);
   if (!kind) throw new Error(`Unsupported file type: ${file.name}`);
   const id = uid();
@@ -109,7 +134,7 @@ export async function importFile(file: File): Promise<MediaItem> {
       duration = meta.duration;
       width = meta.width;
       height = meta.height;
-      hasAudio = kind === 'audio' ? true : await hasAudioTrack(file);
+      hasAudio = kind === 'audio' ? true : await hasAudioTrack(entry);
     }
   } catch (e) {
     URL.revokeObjectURL(url);
@@ -137,6 +162,10 @@ export async function importFile(file: File): Promise<MediaItem> {
 export async function restoreMedia(items: MediaItem[]) {
   for (const m of items) {
     if (registry.has(m.id)) continue;
+    if (m.path) {
+      await restorePath(m);
+      continue;
+    }
     const blob = await loadMediaBlob(m.id).catch(() => undefined);
     if (!blob) {
       useMediaVersion.getState().setOffline(m.id, true);
@@ -152,8 +181,10 @@ export async function restoreMedia(items: MediaItem[]) {
 
 /** Re-links an offline media item to a new file. */
 export async function relinkMedia(m: MediaItem, file: File) {
+  const p = desktop?.pathForFile(file);
+  if (p) return relinkPath(m, p);
   const old = registry.get(m.id);
-  if (old) URL.revokeObjectURL(old.url);
+  if (old) releaseUrl(old.url);
   const entry: MediaEntry = { blob: file, url: URL.createObjectURL(file) };
   if (m.kind === 'image') entry.image = await loadImage(entry.url);
   registry.set(m.id, entry);
@@ -165,7 +196,7 @@ export async function relinkMedia(m: MediaItem, file: File) {
 
 export function forgetMedia(id: string) {
   const e = registry.get(id);
-  if (e) URL.revokeObjectURL(e.url);
+  if (e) releaseUrl(e.url);
   registry.delete(id);
 }
 
@@ -212,7 +243,7 @@ async function makeThumbs(m: MediaItem) {
   const times = Array.from({ length: count }, (_, i) => i * step + step / 2);
   const out: ImageBitmap[] = [];
   try {
-    const input = new Input({ source: new BlobSource(e.blob), formats: ALL_FORMATS });
+    const input = new Input({ source: mbSource(e), formats: ALL_FORMATS });
     const track = await input.getPrimaryVideoTrack();
     if (!track || !(await track.canDecode())) throw new Error('cannot decode');
     const sink = new CanvasSink(track, { height: 90 });
@@ -242,13 +273,13 @@ async function makeThumbs(m: MediaItem) {
 export function getAudioBuffer(id: string): Promise<AudioBuffer | null> {
   const e = registry.get(id);
   if (!e) return Promise.resolve(null);
-  if (!e.audio) e.audio = decodeAudio(e.blob);
+  if (!e.audio) e.audio = decodeAudio(e);
   return e.audio;
 }
 
-async function decodeAudio(blob: Blob): Promise<AudioBuffer | null> {
+async function decodeAudio(e: MediaEntry): Promise<AudioBuffer | null> {
   try {
-    const input = new Input({ source: new BlobSource(blob), formats: ALL_FORMATS });
+    const input = new Input({ source: mbSource(e), formats: ALL_FORMATS });
     const track = await input.getPrimaryAudioTrack();
     if (!track || !(await track.canDecode())) throw new Error('cannot decode');
     const sink = new AudioBufferSink(track);
@@ -275,7 +306,8 @@ async function decodeAudio(blob: Blob): Promise<AudioBuffer | null> {
   } catch {
     try {
       const ac = new OfflineAudioContext(2, 1, 48000);
-      return await ac.decodeAudioData(await blob.arrayBuffer());
+      const data = e.blob ? await e.blob.arrayBuffer() : await (await fetch(e.url)).arrayBuffer();
+      return await ac.decodeAudioData(data);
     } catch {
       return null;
     }
@@ -304,4 +336,105 @@ async function makePeaks(m: MediaItem) {
   e.peaks = peaks;
   e.peaksPerSec = pps;
   bump();
+}
+
+/* ---------- desktop: media referenced by path ---------- */
+
+const KIND_FROM_PROBE = (name: string): MediaKind | null => detectKind({ name });
+
+/** Opens a local file for editing; transcodes to a proxy when Chromium can't decode it. */
+export async function importPath(path: string, name: string, size: number): Promise<MediaItem> {
+  if (!desktop) throw new Error('Desktop only');
+  const kind = KIND_FROM_PROBE(name);
+  if (!kind) throw new Error(`Unsupported file type: ${name}`);
+  const id = uid();
+  const item: MediaItem = { id, name, kind, mime: '', size, duration: 0, width: 0, height: 0, hasAudio: false, addedAt: Date.now(), path };
+  const entry = await openLocal(item, path);
+  registry.set(id, entry);
+  derive(item);
+  return item;
+}
+
+/** Probes a file via <video>/<audio>/<img>, falling back to an ffmpeg proxy. Fills in `item` metadata. */
+async function openLocal(item: MediaItem, path: string): Promise<MediaEntry> {
+  const d = desktop!;
+  const src = item.proxyPath ?? path;
+  const url = mediaUrl(src);
+  if (item.kind === 'image') {
+    const img = await loadImage(url);
+    item.width = img.naturalWidth || 1920;
+    item.height = img.naturalHeight || 1080;
+    return { url, image: img };
+  }
+  const info = await d.probe(path).catch(() => null);
+  try {
+    const meta = await probeElement(url, item.kind);
+    if (item.kind === 'video' && info?.hasVideo && !meta.width) throw new Error('no video decoder');
+    item.duration = meta.duration || info?.duration || 0;
+    item.width = meta.width || info?.width || 0;
+    item.height = meta.height || info?.height || 0;
+    item.hasAudio = item.kind === 'audio' ? true : (info?.hasAudio ?? true);
+    return { url };
+  } catch {
+    if (item.proxyPath) throw new Error(`Can't open ${item.name}`);
+    const proxy = await withProgress(`Converting ${item.name}`, (job) => d.proxy(path, job));
+    item.proxyPath = proxy;
+    return openLocal(item, path);
+  }
+}
+
+async function withProgress<T>(label: string, fn: (jobId: string) => Promise<T>): Promise<T> {
+  const job = uid();
+  const st = useMediaVersion.getState();
+  const off = desktop!.on('ffmpeg:progress', (p) => {
+    if (p.jobId === job) useMediaVersion.setState({ busy: { label, frac: p.frac } });
+  });
+  useMediaVersion.setState({ busy: { label, frac: 0 } });
+  try {
+    return await fn(job);
+  } finally {
+    off();
+    useMediaVersion.setState({ busy: null });
+    st.bump();
+  }
+}
+
+async function restorePath(m: MediaItem) {
+  const d = desktop;
+  if (!d || !m.path || !(await d.stat(m.path)).exists) {
+    useMediaVersion.getState().setOffline(m.id, true);
+    return;
+  }
+  if (m.proxyPath && !(await d.stat(m.proxyPath)).exists) delete m.proxyPath;
+  try {
+    const copy = { ...m };
+    registry.set(m.id, await openLocal(copy, m.path));
+    useMediaVersion.getState().setOffline(m.id, false);
+    syncItem(copy);
+    derive(copy);
+  } catch {
+    useMediaVersion.getState().setOffline(m.id, true);
+  }
+}
+
+async function relinkPath(m: MediaItem, path: string) {
+  const old = registry.get(m.id);
+  if (old) releaseUrl(old.url);
+  const copy: MediaItem = { ...m, path, proxyPath: undefined };
+  registry.set(m.id, await openLocal(copy, path));
+  useMediaVersion.getState().setOffline(m.id, false);
+  syncItem(copy);
+  derive(copy);
+  bump();
+}
+
+/** Writes refreshed file metadata (path, proxy, size) back into the project without an undo step. */
+function syncItem(item: MediaItem) {
+  useStore.getState().edit((p) => {
+    const m = p.media.find((x) => x.id === item.id);
+    if (!m) return;
+    if (m.path !== item.path) m.path = item.path;
+    if (m.proxyPath !== item.proxyPath) m.proxyPath = item.proxyPath;
+    for (const k of ['duration', 'width', 'height', 'hasAudio'] as const) if (item[k] && m[k] !== item[k]) (m as unknown as Record<string, unknown>)[k] = item[k];
+  }, false);
 }

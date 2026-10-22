@@ -11,6 +11,9 @@ import { ContextMenu, MOD, Toasts } from './ui/common';
 import { Icon } from './ui/Icon';
 import { installShortcuts } from './ui/shortcuts';
 import { importViaPicker } from './ui/actions';
+import { DesktopUI } from './ui/DesktopUI';
+import { saveProjectFile } from './ui/projectActions';
+import { desktop } from './desktop';
 
 function usePersistence() {
   const [ready, setReady] = useState(false);
@@ -106,6 +109,7 @@ export default function App() {
   const w = useStore((s) => s.project.width);
   const h = useStore((s) => s.project.height);
   const fps = useStore((s) => s.project.fps);
+  const filePath = useStore((s) => s.project.filePath);
   const [dragging, setDragging] = useState(false);
 
   useEffect(() => installShortcuts(), []);
@@ -134,8 +138,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    document.title = `${name} — F.S. Editor`;
-  }, [name]);
+    document.title = `${name}${filePath ? ` (${filePath.split(/[\\/]/).pop()})` : ''} — F.S. Editor`;
+  }, [name, filePath]);
 
   if (!ready) return <div style={{ display: 'grid', placeItems: 'center', height: '100%', color: 'var(--tx2)' }}>Loading F.S. Editor…</div>;
 
@@ -168,6 +172,11 @@ export default function App() {
           <button className="btn ghost" onClick={() => useStore.setState({ dialog: 'projects' })} title="Projects">
             <Icon name="folder" size={14} /> Projects
           </button>
+          {desktop && (
+            <button className="btn ghost" onClick={() => saveProjectFile(false)} title={`Save project (${MOD}+S)`}>
+              <Icon name="download" size={14} /> Save
+            </button>
+          )}
           <button className="btn ghost" onClick={importViaPicker} title={`Import media (${MOD}+I)`}>
             <Icon name="upload" size={14} /> Import
           </button>
@@ -192,6 +201,7 @@ export default function App() {
       <Dialogs />
       <ContextMenu />
       <Toasts />
+      <DesktopUI />
     </div>
   );
 }

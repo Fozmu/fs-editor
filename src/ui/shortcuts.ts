@@ -2,7 +2,7 @@ import { useStore } from '../store';
 import { clipEnd, projectDuration } from '../engine/project';
 import { TEXT_PRESETS } from '../engine/presets';
 import { addTextPreset, importViaPicker } from './actions';
-import { saveProject } from '../engine/storage';
+import { createProject, openProjectDialog, saveProjectFile } from './projectActions';
 
 function editPoints() {
   const p = useStore.getState().project;
@@ -59,7 +59,13 @@ export function installShortcuts() {
           importViaPicker();
           return handled();
         case 's':
-          saveProject(st.project).then(() => st.toast('Project saved'));
+          saveProjectFile(e.shiftKey);
+          return handled();
+        case 'o':
+          openProjectDialog();
+          return handled();
+        case 'n':
+          createProject();
           return handled();
       }
       return;
@@ -178,4 +184,37 @@ export function installShortcuts() {
   };
   window.addEventListener('keydown', onKey);
   return () => window.removeEventListener('keydown', onKey);
+}
+
+/** Commands sent from the desktop app menu. */
+export function runCommand(cmd: string) {
+  const st = useStore.getState();
+  switch (cmd) {
+    case 'new':
+      return createProject();
+    case 'open':
+      return openProjectDialog();
+    case 'projects':
+      return st.set({ dialog: 'projects' });
+    case 'save':
+      return saveProjectFile(false);
+    case 'saveAs':
+      return saveProjectFile(true);
+    case 'import':
+      return importViaPicker();
+    case 'export':
+      return st.set({ dialog: 'export', playing: false });
+    case 'settings':
+      return st.set({ dialog: 'settings' });
+    case 'undo':
+      return st.undo();
+    case 'redo':
+      return st.redo();
+    case 'split':
+      return st.splitAtPlayhead();
+    case 'marker':
+      return st.addMarker();
+    case 'shortcuts':
+      return st.set({ dialog: 'shortcuts' });
+  }
 }
