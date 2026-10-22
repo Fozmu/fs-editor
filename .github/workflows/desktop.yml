@@ -34,14 +34,20 @@ jobs:
         # Failures are re-emitted as an annotation so they're readable without the raw log.
         run: |
           if [ -z "$GH_TOKEN" ]; then echo "::error::RELEASES_TOKEN secret is missing or empty"; exit 1; fi
+          # electron-builder races its own parallel uploads when it has to create the release
+          # (422 "Published releases must have a valid tag"), so create it up front as a draft.
+          tag="v$(node -p "require('./package.json').version")"
+          repo=Fozmu/fs-editor-releases
+          gh release view "$tag" -R "$repo" >/dev/null 2>&1 || gh release create "$tag" -R "$repo" --draft --title "${tag#v}" --notes ""
           set +e
           npx electron-builder --win --x64 --publish always 2>&1 | tee build.log
           code=${PIPESTATUS[0]}
           if [ $code -ne 0 ]; then
             msg=$(grep -v '^\s*$' build.log | tail -n 25 | sed 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
             echo "::error title=electron-builder failed::$msg"
+            exit $code
           fi
-          exit $code
+          gh release edit "$tag" -R "$repo" --draft=false
         env:
           # Fine-grained token with Contents: read & write on Fozmu/fs-editor-releases
           GH_TOKEN: ${{ secrets.RELEASES_TOKEN }}
