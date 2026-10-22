@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="F.S. Editor: a fast, local video editor for Windows by Fozmu Studios." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>F.S. Editor — Fozmu Studios</title>
+    <style>
+      :root { --bg: #07090b; --fg: #f2f5f3; --muted: #8b9690; --accent: #2aff98; --accent-dk: #13d47c; --card: #10151a; --line: #1d252c; }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+      main { max-width: 880px; margin: 0 auto; padding: 72px 16px 48px; text-align: center; }
+      .logo { width: 96px; height: auto; }
+      h1 { font-size: clamp(36px, 7vw, 56px); margin: 20px 0 8px; letter-spacing: -0.02em; }
+      .tag { color: var(--muted); font-size: 18px; margin: 0 0 36px; }
+      .dl { display: inline-flex; align-items: center; gap: 10px; padding: 16px 28px; border-radius: 12px; background: var(--accent); color: #04140c; font-weight: 700; font-size: 18px; text-decoration: none; transition: background .15s; }
+      .dl:hover { background: var(--accent-dk); }
+      .meta { color: var(--muted); font-size: 14px; margin-top: 12px; min-height: 21px; }
+      .meta a { color: var(--muted); }
+      .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-top: 64px; text-align: left; }
+      .features div { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px; }
+      .features h3 { margin: 0 0 6px; font-size: 16px; }
+      .features p { margin: 0; color: var(--muted); font-size: 14px; }
+      footer { color: var(--muted); font-size: 13px; padding: 32px 16px; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <img class="logo" src="/logo.svg" alt="F.S. Editor logo" />
+      <h1>F.S. Editor</h1>
+      <p class="tag">Fast, local video editing for Windows.</p>
+      <a id="download" class="dl" href="https://github.com/Fozmu/fs-editor-releases/releases/latest">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12M6 11l6 6 6-6M4 21h16"/></svg>
+        Download for Windows
+      </a>
+      <p id="meta" class="meta">Windows 10/11 · 64-bit</p>
+      <section class="features">
+        <div><h3>Your files stay yours</h3><p>No uploads, no account. Media never leaves your PC.</p></div>
+        <div><h3>Timeline editing</h3><p>Multi-track video, audio, text and effects.</p></div>
+        <div><h3>Fast export</h3><p>Built-in ffmpeg for quick, high-quality renders.</p></div>
+      </section>
+    </main>
+    <footer>© Fozmu Studios</footer>
+    <script>
+      // Installer names carry the version, so resolve the newest .exe; the button already links to releases/latest as a fallback.
+      fetch('https://api.github.com/repos/Fozmu/fs-editor-releases/releases/latest')
+        .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+        .then((rel) => {
+          const exe = rel.assets.find((a) => a.name.endsWith('.exe'));
+          if (!exe) return;
+          document.getElementById('download').href = exe.browser_download_url;
+          const mb = (exe.size / 1048576).toFixed(0);
+          document.getElementById('meta').innerHTML =
+            `${rel.tag_name} · ${mb} MB · Windows 10/11 64-bit · <a href="${rel.html_url}">release notes</a>`;
+        })
+        .catch(() => {});
+    </script>
+  </body>
+</html>

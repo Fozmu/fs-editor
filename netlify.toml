@@ -1,0 +1,4 @@
+# editor.fozmu.com is the desktop download page; the editor itself ships as the Windows app.
+[build]
+  publish = "site"
+  command = ""
