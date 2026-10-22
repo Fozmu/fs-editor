@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from '../store';
-import type { Clip, Project, Track } from '../types';
+import type { Clip, Ease, Project, Track } from '../types';
 import { getEntry, useMediaVersion } from '../engine/media';
 import {
   clearRange,
@@ -10,6 +10,7 @@ import {
   makeClip,
   maxDurFor,
   projectDuration,
+  snapFrame,
   snapPoints,
   splitClip,
   trimStartTo,
@@ -157,6 +158,12 @@ export function Timeline() {
       } else st.splitAt(clip.id, t);
       return;
     }
+    const kf = target.closest('[data-kf]') as HTMLElement | null;
+    if (kf) {
+      st.select([clip.id]);
+      startKeyDrag(e, clip, +kf.dataset.kf!);
+      return;
+    }
     const edge = target.closest('[data-edge]') as HTMLElement | null;
     // selection
     let sel = st.selection;
@@ -187,6 +194,48 @@ export function Timeline() {
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  /** Click a keyframe diamond to jump to it, drag to retime every key at that time. */
+  const startKeyDrag = (e: React.PointerEvent, clip: Clip, t0: number) => {
+    const st = useStore.getState();
+    const tol = 0.5 / st.project.fps;
+    const base = clone(clip.keys);
+    const x0 = e.clientX;
+    let moved = false;
+    let cur = t0;
+    const move = (ev: PointerEvent) => {
+      if (!moved && Math.abs(ev.clientX - x0) < 3) return;
+      if (!moved) {
+        moved = true;
+        st.beginGesture();
+      }
+      const s2 = useStore.getState();
+      cur = Math.min(clip.dur, Math.max(0, snapFrame(t0 + (ev.clientX - x0) / s2.zoom, s2.project.fps)));
+      s2.updateClip(
+        clip.id,
+        (c) => {
+          const out: Clip['keys'] = {};
+          for (const [k, ks] of Object.entries(base)) {
+            const at = ks.find((kf) => Math.abs(kf.t - t0) < tol);
+            // A dragged key replaces whatever key it lands on.
+            const rest = ks.filter((kf) => kf !== at && (!at || Math.abs(kf.t - cur) >= tol));
+            out[k] = at ? [...rest, { ...at, t: cur }].sort((a, b) => a.t - b.t) : rest;
+          }
+          c.keys = out;
+        },
+        false,
+      );
+      s2.setPlayhead(clip.start + cur);
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (moved) useStore.getState().endGesture();
+      else useStore.getState().setPlayhead(clip.start + t0);
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
@@ -427,6 +476,23 @@ export function Timeline() {
     }
     const clipEl = target.closest('[data-clip]') as HTMLElement | null;
     const t = timeAt(e.clientX);
+    const kfEl = target.closest('[data-kf]') as HTMLElement | null;
+    if (clipEl && kfEl) {
+      const id = clipEl.dataset.clip!;
+      const kt = +kfEl.dataset.kf!;
+      st.select([id]);
+      const ease = (e: Ease, label: string): MenuItem => ({ label, action: () => st.setEaseAt(id, kt, e) });
+      useMenu.getState().open(e.clientX, e.clientY, [
+        ease('linear', 'Linear'),
+        ease('easeIn', 'Ease In'),
+        ease('easeOut', 'Ease Out'),
+        ease('easeInOut', 'Ease In/Out'),
+        ease('hold', 'Hold'),
+        { sep: true },
+        { label: 'Delete keyframe', icon: 'trash', danger: true, action: () => st.deleteKeysAt(id, kt) },
+      ]);
+      return;
+    }
     if (clipEl) {
       const id = clipEl.dataset.clip!;
       if (!st.selection.includes(id)) st.select([id]);
@@ -854,6 +920,9 @@ function TrackHead({ track }: { track: Track }) {
 
 const ClipView = memo(function ClipView({ clip, zoom, h, selected, offline }: { clip: Clip; zoom: number; h: number; selected: boolean; offline: boolean }) {
   const v = useMediaVersion((s) => s.v);
+  // Only the selected clip follows the playhead (to highlight its current keyframe).
+  const playhead = useStore((s) => (selected ? s.playhead : -1));
+  const fps = useStore((s) => s.project.fps);
   const ref = useRef<HTMLCanvasElement>(null);
   const left = clip.start * zoom;
   const width = Math.max(3, clip.dur * zoom);
@@ -936,7 +1005,7 @@ const ClipView = memo(function ClipView({ clip, zoom, h, selected, offline }: { 
       {clip.transIn.type !== 'none' && <div className="trans" style={{ left: 0, width: Math.min(width, clip.transIn.dur * zoom) }} />}
       {clip.transOut.type !== 'none' && <div className="trans out" style={{ right: 0, width: Math.min(width, clip.transOut.dur * zoom) }} />}
       {kfTimes.map((t) => (
-        <div key={t} className="kfdot" style={{ left: t * zoom }} />
+        <div key={t} data-kf={t} className={'kfdot' + (selected && Math.abs(playhead - clip.start - t) < 0.5 / fps ? ' on' : '')} style={{ left: t * zoom }} title="Keyframe: drag to move, right-click for easing" />
       ))}
       <div className="edge l" data-edge="l" />
       <div className="edge r" data-edge="r" />

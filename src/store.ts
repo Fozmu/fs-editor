@@ -1,6 +1,6 @@
 import { produce } from 'immer';
 import { create } from 'zustand';
-import type { Clip, ClipKind, Keyframe, MediaItem, Project, Track, TrackType } from './types';
+import type { Clip, ClipKind, Ease, Keyframe, MediaItem, Project, Track, TrackType } from './types';
 import {
   clearRange,
   clipEnd,
@@ -15,7 +15,7 @@ import {
   splitClip,
   uid,
 } from './engine/project';
-import { PROP_MAP, propAt } from './engine/props';
+import { MOTION_KEYS, PROP_MAP, propAt } from './engine/props';
 
 export type Tool = 'select' | 'razor' | 'ripple' | 'slip';
 
@@ -40,7 +40,7 @@ interface State {
   tool: Tool;
   snapping: boolean;
   clipboard: Clip[];
-  dialog: null | 'export' | 'settings' | 'projects' | 'shortcuts' | 'tour';
+  dialog: null | 'export' | 'settings' | 'projects' | 'shortcuts' | 'tour' | 'whatsnew';
   toasts: Toast[];
 
   edit: (fn: (p: Project) => void, history?: boolean) => void;
@@ -73,6 +73,11 @@ interface State {
   setProp: (id: string, key: string, value: number, history?: boolean) => void;
   toggleAnimate: (id: string, key: string) => void;
   toggleKeyframeHere: (id: string, key: string) => void;
+  /** Adds (or removes) one keyframe for every motion prop at the playhead. */
+  toggleMotionKey: (id: string) => void;
+  deleteKeysAt: (id: string, t: number) => void;
+  setEaseAt: (id: string, t: number, ease: Ease) => void;
+  insertPip: (mediaId: string) => void;
   resetProps: (id: string, keys: string[]) => void;
   addTrack: (type: TrackType) => void;
   removeTrack: (id: string) => void;
@@ -107,6 +112,26 @@ function pushTrack(p: Project, type: TrackType): Track {
     p.tracks.splice(lastV + 1, 0, t);
   } else p.tracks.push(t);
   return t;
+}
+
+export type PipCorner = 'tl' | 'tc' | 'tr' | 'ml' | 'mc' | 'mr' | 'bl' | 'bc' | 'br';
+
+/** Position + scale that puts a clip in a corner of the frame at `size`% of its fitted size. */
+export function pipProps(p: Project, c: Clip, corner: PipCorner, size: number) {
+  const m = p.media.find((x) => x.id === c.mediaId);
+  const sw = m?.width || p.width;
+  const sh = m?.height || p.height;
+  const fit = Math.min(p.width / sw, p.height / sh);
+  const w = sw * fit * (size / 100);
+  const h = sh * fit * (size / 100);
+  const margin = Math.round(Math.min(p.width, p.height) * 0.04);
+  const col = { l: -1, c: 0, r: 1 }[corner[1] as 'l' | 'c' | 'r'];
+  const row = { t: -1, m: 0, b: 1 }[corner[0] as 't' | 'm' | 'b'];
+  return {
+    scale: size,
+    x: Math.round(col * (p.width / 2 - w / 2 - margin)),
+    y: Math.round(row * (p.height / 2 - h / 2 - margin)),
+  };
 }
 
 export const useStore = create<State>((set, get) => ({
@@ -354,6 +379,14 @@ export const useStore = create<State>((set, get) => ({
         const hit = ks.find((k) => Math.abs(k.t - lt) < tol);
         if (hit) hit.v = value;
         else {
+          // A motion keyframe is a whole pose: pin the other animated motion props here too.
+          if (MOTION_KEYS.includes(key))
+            for (const k of MOTION_KEYS) {
+              const other = c.keys[k];
+              if (k === key || !other?.length || other.some((kf) => Math.abs(kf.t - lt) < tol)) continue;
+              other.push({ t: lt, v: propAt(c, k, lt), ease: 'linear' });
+              other.sort((a, b) => a.t - b.t);
+            }
           ks.push({ t: lt, v: value, ease: 'linear' });
           ks.sort((a, b) => a.t - b.t);
         }
@@ -396,6 +429,73 @@ export const useStore = create<State>((set, get) => ({
         c.props[key] = cur;
       }
     });
+  },
+  toggleMotionKey: (id) => {
+    const { playhead } = get();
+    get().edit((p) => {
+      const c = p.clips.find((x) => x.id === id);
+      if (!c || c.kind === 'audio') return;
+      const lt = Math.min(c.dur, Math.max(0, playhead - c.start));
+      const tol = 0.5 / p.fps;
+      const keyed = MOTION_KEYS.some((k) => c.keys[k]?.some((kf) => Math.abs(kf.t - lt) < tol));
+      for (const k of MOTION_KEYS) {
+        const cur = propAt(c, k, lt);
+        if (keyed) {
+          if (!c.keys[k]) continue;
+          const rest = c.keys[k].filter((kf) => Math.abs(kf.t - lt) >= tol);
+          if (rest.length) c.keys[k] = rest;
+          else {
+            delete c.keys[k];
+            c.props[k] = cur;
+          }
+        } else {
+          const ks = c.keys[k] ?? [];
+          ks.push({ t: lt, v: cur, ease: 'linear' });
+          ks.sort((a, b) => a.t - b.t);
+          c.keys[k] = ks;
+        }
+      }
+    });
+  },
+  deleteKeysAt: (id, t) =>
+    get().edit((p) => {
+      const c = p.clips.find((x) => x.id === id);
+      if (!c) return;
+      const tol = 0.5 / p.fps;
+      for (const k of Object.keys(c.keys)) {
+        const v = propAt(c, k, t);
+        const rest = c.keys[k].filter((kf) => Math.abs(kf.t - t) >= tol);
+        if (rest.length) c.keys[k] = rest;
+        else {
+          delete c.keys[k];
+          c.props[k] = v;
+        }
+      }
+    }),
+  setEaseAt: (id, t, ease) =>
+    get().edit((p) => {
+      const c = p.clips.find((x) => x.id === id);
+      if (!c) return;
+      const tol = 0.5 / p.fps;
+      for (const ks of Object.values(c.keys)) for (const kf of ks) if (Math.abs(kf.t - t) < tol) kf.ease = ease;
+    }),
+  insertPip: (mediaId) => {
+    const { project, playhead } = get();
+    const m = project.media.find((x) => x.id === mediaId);
+    if (!m || m.kind === 'audio') return;
+    let newId = '';
+    get().edit((p) => {
+      const probe = clipFromMedia(m, '', playhead);
+      // Over the main video: the topmost free video track, so the overlay sits above everything.
+      const tid = findFreeTrack(p, 'video', playhead, playhead + probe.dur, true);
+      const c = clipFromMedia(m, tid, playhead);
+      if (m.kind === 'image') c.dur = 5;
+      Object.assign(c.props, pipProps(p, c, 'tr', 35), { radius: 24, border: 6, shadow: 20 });
+      c.borderColor = '#ffffff';
+      p.clips.push(c);
+      newId = c.id;
+    });
+    set({ selection: [newId] });
   },
   resetProps: (id, keys) =>
     get().edit((p) => {

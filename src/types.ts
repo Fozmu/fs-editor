@@ -82,6 +82,9 @@ export interface TextStyle {
 
 export type FitMode = 'fit' | 'fill' | 'stretch' | 'none';
 
+/** Shape the visible (cropped) frame is cut to. */
+export type MaskShape = 'none' | 'circle' | 'heart' | 'star';
+
 export type BlendMode =
   | 'source-over'
   | 'multiply'
@@ -126,6 +129,9 @@ export interface Clip {
   text?: TextStyle;
   color?: string;
   label?: string;
+  mask?: MaskShape;
+  /** Color of the outline drawn by the `border` prop. */
+  borderColor?: string;
 }
 
 export interface Track {

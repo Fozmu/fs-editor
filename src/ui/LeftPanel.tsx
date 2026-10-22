@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useStore } from '../store';
+import { pipProps, useStore } from '../store';
 import { getEntry, relinkMedia, useMediaVersion, forgetMedia } from '../engine/media';
 import { formatShort } from '../engine/project';
 import { COLOR_KEYS, COLOR_PRESETS, TEXT_PRESETS, TRANSITIONS } from '../engine/presets';
@@ -86,6 +86,7 @@ function MediaBin() {
   const [q, setQ] = useState('');
   const [over, setOver] = useState(false);
   const [filter, setFilter] = useState<'all' | 'video' | 'audio' | 'image'>('all');
+  const pipMedia = media.find((m) => m.id === selected && m.kind !== 'audio');
   const list = media.filter((m) => (filter === 'all' || m.kind === filter) && m.name.toLowerCase().includes(q.toLowerCase()));
 
   const menu = (e: React.MouseEvent, m: MediaItem) => {
@@ -93,6 +94,7 @@ function MediaBin() {
     useStore.setState({ selectedMedia: m.id });
     useMenu.getState().open(e.clientX, e.clientY, [
       { label: 'Insert at playhead', icon: 'plus', action: () => useStore.getState().insertMedia(m.id) },
+      ...(m.kind !== 'audio' ? [{ label: 'Add as Picture in Picture', icon: 'pip', action: () => useStore.getState().insertPip(m.id) }] : []),
       {
         label: 'Relink / replace file…',
         icon: 'folder',
@@ -136,6 +138,14 @@ function MediaBin() {
       <div className="bin-tools">
         <button className="btn primary sm" onClick={importViaPicker}>
           <Icon name="upload" size={14} /> Import
+        </button>
+        <button
+          className="btn sm"
+          disabled={!pipMedia}
+          title={pipMedia ? `Add "${pipMedia.name}" as picture-in-picture over the video at the playhead` : 'Select a video or image to add it as picture-in-picture'}
+          onClick={() => pipMedia && useStore.getState().insertPip(pipMedia.id)}
+        >
+          <Icon name="pip" size={14} /> PiP
         </button>
         <input className="search" placeholder="Search media…" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.stopPropagation()} />
       </div>
@@ -293,7 +303,7 @@ function Effects() {
           { n: 'Vignette', p: { vignette: 55 } },
           { n: 'Drop Shadow', p: { shadow: 30 } },
           { n: 'Rounded', p: { radius: 48 } },
-          { n: 'Picture in Picture', p: { scale: 35, x: 560, y: -280, radius: 24, shadow: 30 } },
+          { n: 'Picture in Picture', pip: true },
           { n: 'Ken Burns', kb: true },
         ].map((fx) => (
           <button
@@ -310,6 +320,9 @@ function Effects() {
                     { t: 0, v: -30, ease: 'linear' },
                     { t: c.dur, v: 30, ease: 'linear' },
                   ];
+                } else if (fx.pip) {
+                  Object.assign(c.props, pipProps(useStore.getState().project, c, 'tr', 35), { radius: 24, border: 6, shadow: 20 });
+                  c.borderColor ??= '#ffffff';
                 } else Object.assign(c.props, fx.p);
               }, fx.n)
             }

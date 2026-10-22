@@ -53,6 +53,9 @@ Every pull request also builds the installer — download it from the workflow r
 - Color: brightness, contrast, saturation, hue, temperature, tint, B&W, sepia, invert + 11 looks
 - Effects: Gaussian blur, vignette, drop shadow, adjustment layers
 - Keyframes with linear / ease / hold interpolation
+- One-click keyframes (◆ under the viewer or `P`): keys position, scale, rotation and opacity together; drag diamonds on the timeline to retime, right-click for easing
+
+**Picture in Picture** — add any video or image as an overlay (PiP button or right-click in Project Media), 9-way corner placement, size presets, circle / heart / star / rounded masks, border color & width
 - Speed 5%–1600%, detach audio
 
 **Titles** — 12 presets, any font/size/weight, stroke, shadow, background box, typewriter animation

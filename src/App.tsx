@@ -11,6 +11,7 @@ import { ContextMenu, MOD, Toasts } from './ui/common';
 import { Icon } from './ui/Icon';
 import { Logo } from './ui/Logo';
 import { shouldShowTour, Tour } from './ui/Tour';
+import { shouldShowWhatsNew, WhatsNew } from './ui/WhatsNew';
 import { installShortcuts } from './ui/shortcuts';
 import { importViaPicker } from './ui/actions';
 import { DesktopUI } from './ui/DesktopUI';
@@ -117,7 +118,10 @@ export default function App() {
   useEffect(() => installShortcuts(), []);
 
   useEffect(() => {
-    if (ready && shouldShowTour()) useStore.setState({ dialog: 'tour' });
+    if (!ready) return;
+    // First run gets the tour; the announcement waits for the next launch.
+    if (shouldShowTour()) useStore.setState({ dialog: 'tour' });
+    else if (shouldShowWhatsNew()) useStore.setState({ dialog: 'whatsnew' });
   }, [ready]);
 
   useEffect(() => {
@@ -214,6 +218,7 @@ export default function App() {
       <Toasts />
       <DesktopUI />
       <Tour />
+      <WhatsNew />
     </div>
   );
 }
