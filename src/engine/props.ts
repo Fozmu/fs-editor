@@ -3,7 +3,7 @@ import type { Clip, ClipKind, Ease, Keyframe, TextStyle, Transition } from '../t
 export interface PropDef {
   key: string;
   label: string;
-  group: 'transform' | 'crop' | 'color' | 'effects' | 'audio';
+  group: 'transform' | 'crop' | 'key' | 'color' | 'effects' | 'audio';
   min: number;
   max: number;
   step: number;
@@ -28,6 +28,10 @@ export const PROP_DEFS: PropDef[] = [
   { key: 'cropT', label: 'Crop Top', group: 'crop', min: 0, max: 100, step: 0.1, def: 0, unit: '%' },
   { key: 'cropB', label: 'Crop Bottom', group: 'crop', min: 0, max: 100, step: 0.1, def: 0, unit: '%' },
   { key: 'radius', label: 'Corner Radius', group: 'crop', min: 0, max: 2000, step: 1, def: 0, unit: 'px', sliderMax: 400 },
+
+  { key: 'keySim', label: 'Similarity', group: 'key', min: 0, max: 100, step: 0.5, def: 40 },
+  { key: 'keySmooth', label: 'Smoothness', group: 'key', min: 0, max: 100, step: 0.5, def: 8 },
+  { key: 'keySpill', label: 'Spill Reduction', group: 'key', min: 0, max: 100, step: 0.5, def: 10 },
 
   { key: 'brightness', label: 'Brightness', group: 'color', min: 0, max: 300, step: 1, def: 100, unit: '%', sliderMax: 200 },
   { key: 'contrast', label: 'Contrast', group: 'color', min: 0, max: 300, step: 1, def: 100, unit: '%', sliderMax: 200 },
@@ -57,13 +61,15 @@ export const STATIC_PROPS = new Set(['fadeIn', 'fadeOut']);
 export function groupsFor(kind: ClipKind): PropDef['group'][] {
   switch (kind) {
     case 'video':
-      return ['transform', 'crop', 'color', 'effects', 'audio'];
+      return ['transform', 'crop', 'key', 'color', 'effects', 'audio'];
     case 'audio':
       return ['audio'];
     case 'adjust':
       return ['color', 'effects'];
     case 'solid':
       return ['transform', 'crop', 'effects'];
+    case 'image':
+      return ['transform', 'crop', 'key', 'color', 'effects'];
     default:
       return ['transform', 'crop', 'color', 'effects'];
   }
