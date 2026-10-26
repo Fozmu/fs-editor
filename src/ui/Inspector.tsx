@@ -19,6 +19,7 @@ export const KIND_COLOR: Record<Clip['kind'], string> = {
 const GROUP_TITLES: Record<PropDef['group'], string> = {
   transform: 'Motion',
   crop: 'Crop & Shape',
+  key: 'Chroma Key',
   color: 'Lumetri Color',
   effects: 'Effects',
   audio: 'Audio',
@@ -204,7 +205,7 @@ function ClipInspector({ clip }: { clip: Clip }) {
         <Section
           key={g}
           title={GROUP_TITLES[g]}
-          defaultOpen={g !== 'crop' && g !== 'effects'}
+          defaultOpen={g !== 'crop' && g !== 'effects' && (g !== 'key' || !!clip.keyColor)}
           right={
             <button className="ibtn sm" title="Reset section" onClick={() => st().resetProps(clip.id, PROP_DEFS.filter((d) => d.group === g).map((d) => d.key))}>
               <Icon name="reset" size={13} />
@@ -232,14 +233,72 @@ function ClipInspector({ clip }: { clip: Clip }) {
               ))}
             </div>
           )}
-          {PROP_DEFS.filter((d) => d.group === g).map((d) => (
-            <PropRow key={d.key} clip={clip} def={d} lt={lt} />
-          ))}
+          {g === 'key' && <KeyControls clip={clip} />}
+          {(g !== 'key' || clip.keyColor) &&
+            PROP_DEFS.filter((d) => d.group === g).map((d) => <PropRow key={d.key} clip={clip} def={d} lt={lt} />)}
         </Section>
       ))}
 
       {clip.kind !== 'audio' && <TransitionSection clip={clip} />}
     </div>
+  );
+}
+
+const KEY_SWATCHES = [
+  { name: 'Green', color: '#00b140' },
+  { name: 'Blue', color: '#0047bb' },
+];
+
+interface EyeDropperCtor {
+  new (): { open(): Promise<{ sRGBHex: string }> };
+}
+
+function KeyControls({ clip }: { clip: Clip }) {
+  const st = useStore.getState;
+  const upd = (fn: (c: Clip) => void, history = true) => st().updateClip(clip.id, fn, history);
+  const Dropper = (window as unknown as { EyeDropper?: EyeDropperCtor }).EyeDropper;
+  const pick = async () => {
+    if (!Dropper) return;
+    // Sample the unkeyed image: turn keying off while the dropper is open.
+    const prev = clip.keyColor;
+    upd((c) => void delete c.keyColor, false);
+    try {
+      const { sRGBHex } = await new Dropper().open();
+      upd((c) => void (c.keyColor = toHex(sRGBHex)));
+    } catch {
+      upd((c) => void (c.keyColor = prev), false);
+    }
+  };
+  return (
+    <>
+      <div className="chip-row">
+        <button className={'chip' + (clip.keyColor ? ' on' : '')} onClick={() => upd((c) => void (c.keyColor = c.keyColor ? undefined : KEY_SWATCHES[0].color))}>
+          {clip.keyColor ? 'Keying on' : 'Remove background color'}
+        </button>
+      </div>
+      {clip.keyColor && (
+        <>
+          <div className="row plain">
+            <label>Key color</label>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              <input type="color" value={clip.keyColor} onChange={(e) => upd((c) => void (c.keyColor = e.target.value), false)} onBlur={() => upd(() => {})} />
+              {Dropper && (
+                <button className="ibtn sm" title="Pick key color from screen" onClick={pick}>
+                  <Icon name="eyedropper" size={13} />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="chip-row">
+            {KEY_SWATCHES.map((k) => (
+              <button key={k.name} className={'chip' + (clip.keyColor === k.color ? ' on' : '')} onClick={() => upd((c) => void (c.keyColor = k.color))}>
+                {k.name} screen
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </>
   );
 }
 

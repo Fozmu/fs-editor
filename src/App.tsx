@@ -161,6 +161,9 @@ export default function App() {
             <Logo size={18} />
           </div>
           F.S. Editor <small>by Fozmu Studios</small>
+          <span className="app-ver" title="F.S. Editor version">
+            v{__APP_VERSION__}
+          </span>
         </div>
         <input
           className="proj-name"

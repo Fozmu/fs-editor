@@ -126,6 +126,8 @@ export interface Clip {
   text?: TextStyle;
   color?: string;
   label?: string;
+  /** Chroma key color (#rrggbb); keying is on while set. */
+  keyColor?: string;
 }
 
 export interface Track {

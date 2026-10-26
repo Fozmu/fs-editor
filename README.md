@@ -52,6 +52,7 @@ Every pull request also builds the installer — download it from the workflow r
 - Crop & corner radius, blend modes, flip, fit/fill/stretch
 - Color: brightness, contrast, saturation, hue, temperature, tint, B&W, sepia, invert + 11 looks
 - Effects: Gaussian blur, vignette, drop shadow, adjustment layers
+- Chroma key (green / blue screen): key color + screen eyedropper, similarity, smoothness, spill reduction (GPU)
 - Keyframes with linear / ease / hold interpolation
 - Speed 5%–1600%, detach audio
 
@@ -75,4 +76,4 @@ src/store.ts  Zustand store with undo history
 
 ## Roadmap
 
-- Chroma key, LUT import, audio effects (EQ, compressor), multicam, proxies
+- LUT import, audio effects (EQ, compressor), multicam, proxies

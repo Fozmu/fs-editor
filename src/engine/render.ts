@@ -1,4 +1,5 @@
 import type { Clip, Project, TextStyle, TransitionType } from '../types';
+import { chromaKey } from './chroma';
 import { easeInOut, propAt } from './props';
 import { visualLayersAt, type ActiveLayer } from './project';
 
@@ -375,6 +376,19 @@ function drawLayer(ctx: Canvas2D, p: Project, layer: ActiveLayer, src: SourcePro
       L.fillStyle = c.color || '#000';
       L.fillRect(x0, y0, dw, dh);
     } else if (source) {
+      if (c.keyColor && (c.kind === 'video' || c.kind === 'image')) {
+        // Key at no more than the drawn size: cheaper for small previews, same result on export.
+        const kw = Math.max(1, Math.min(sw, Math.round(Math.abs(bw))));
+        const kh = Math.max(1, Math.min(sh, Math.round(Math.abs(bh))));
+        source = chromaKey(source, kw, kh, {
+          color: c.keyColor,
+          similarity: propAt(c, 'keySim', lt),
+          smoothness: propAt(c, 'keySmooth', lt),
+          spill: propAt(c, 'keySpill', lt),
+        });
+        sw = kw;
+        sh = kh;
+      }
       L.drawImage(source as CanvasImageSource, cl * sw, ct * sh, cw * sw, ch * sh, x0, y0, dw, dh);
     }
     L.filter = 'none';

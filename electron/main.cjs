@@ -201,6 +201,8 @@ function buildMenu() {
         { label: `About F.S. Editor ${app.getVersion()}`, click: () => dialog.showMessageBox({ title: 'F.S. Editor', message: `F.S. Editor ${app.getVersion()}`, detail: 'Video editor by Fozmu Studios.' }) },
       ],
     },
+    // Version shown right of Help; a disabled top-level item with no submenu.
+    { label: `v${app.getVersion()}`, enabled: false },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
