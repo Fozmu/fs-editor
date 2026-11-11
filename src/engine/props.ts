@@ -46,6 +46,7 @@ export const PROP_DEFS: PropDef[] = [
 
   { key: 'blur', label: 'Gaussian Blur', group: 'effects', min: 0, max: 200, step: 0.5, def: 0, unit: 'px', sliderMax: 60 },
   { key: 'vignette', label: 'Vignette', group: 'effects', min: 0, max: 100, step: 1, def: 0, unit: '%' },
+  { key: 'pixelate', label: 'Pixelate', group: 'effects', min: 0, max: 400, step: 1, def: 0, unit: 'px', sliderMax: 100 },
   { key: 'shadow', label: 'Drop Shadow', group: 'effects', min: 0, max: 200, step: 1, def: 0, unit: 'px', sliderMax: 80 },
 
   { key: 'volume', label: 'Volume', group: 'audio', min: 0, max: 400, step: 1, def: 100, unit: '%', sliderMax: 200 },

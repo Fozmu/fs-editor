@@ -37,6 +37,31 @@ function getLayer(w: number, h: number) {
   return layerCanvas;
 }
 
+let mosaicCanvas: OffscreenCanvas | null = null;
+
+/** Mosaic: shrink the layer to one pixel per block, then blow it back up without smoothing. */
+function pixelate(L: OffscreenCanvasRenderingContext2D, W: number, H: number, block: number) {
+  if (block < 1.5) return;
+  const sw = Math.max(1, Math.ceil(W / block));
+  const sh = Math.max(1, Math.ceil(H / block));
+  if (!mosaicCanvas) mosaicCanvas = new OffscreenCanvas(sw, sh);
+  if (mosaicCanvas.width !== sw || mosaicCanvas.height !== sh) {
+    mosaicCanvas.width = sw;
+    mosaicCanvas.height = sh;
+  }
+  const m = mosaicCanvas.getContext('2d')!;
+  m.clearRect(0, 0, sw, sh);
+  m.imageSmoothingEnabled = true;
+  m.imageSmoothingQuality = 'medium';
+  m.drawImage(L.canvas, 0, 0, sw, sh);
+  L.save();
+  L.setTransform(1, 0, 0, 1, 0, 0);
+  L.globalCompositeOperation = 'copy';
+  L.imageSmoothingEnabled = false;
+  L.drawImage(mosaicCanvas, 0, 0, sw, sh, 0, 0, sw * block, sh * block);
+  L.restore();
+}
+
 /* ---------------- text ---------------- */
 
 const textCache = new Map<string, OffscreenCanvas>();
@@ -333,6 +358,7 @@ function drawLayer(ctx: Canvas2D, p: Project, layer: ActiveLayer, src: SourcePro
     L.filter = colorFilter(c, lt, tr.blur, k);
     L.drawImage(ctx.canvas as CanvasImageSource, 0, 0);
     L.filter = 'none';
+    pixelate(L, W, H, propAt(c, 'pixelate', lt) * k);
     tintAndVignette(L, c, lt, W, H, cx, cy, bw, bh);
   } else {
     let source: Source | null = null;
@@ -434,6 +460,7 @@ function drawLayer(ctx: Canvas2D, p: Project, layer: ActiveLayer, src: SourcePro
       L.stroke(shape);
     }
     L.setTransform(1, 0, 0, 1, 0, 0);
+    pixelate(L, W, H, propAt(c, 'pixelate', lt) * k);
     tintAndVignette(L, c, lt, W, H, cx, cy, bw, bh);
   }
 

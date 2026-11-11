@@ -1,4 +1,4 @@
-import { pipProps, useStore, type PipCorner } from '../store';
+import { pipProps, useStore, type AnimPreset, type PipCorner } from '../store';
 import type { Clip, Ease, FitMode, MaskShape, TextStyle, TransitionType } from '../types';
 import { groupsFor, PROP_DEFS, propAt, STATIC_PROPS, type PropDef } from '../engine/props';
 import { BLEND_MODES, COLOR_KEYS, COLOR_PRESETS, FONTS, TRANSITIONS } from '../engine/presets';
@@ -203,6 +203,8 @@ function ClipInspector({ clip }: { clip: Clip }) {
 
       {(clip.kind === 'video' || clip.kind === 'image') && <PipSection clip={clip} lt={lt} />}
 
+      {clip.kind !== 'audio' && clip.kind !== 'adjust' && <AnimationSection clip={clip} />}
+
       {groups.map((g) => (
         <Section
           key={g}
@@ -404,6 +406,38 @@ const SHAPES: { name: string; mask: MaskShape; radius: number }[] = [
 ];
 
 /** InShot-style picture-in-picture: corner placement, size, mask shape and outline. */
+const ANIMATIONS: { id: AnimPreset; name: string; hint: string }[] = [
+  { id: 'zoomIn', name: 'Zoom In', hint: 'Slow push in across the whole clip (Ken Burns)' },
+  { id: 'zoomOut', name: 'Zoom Out', hint: 'Slow pull back across the whole clip' },
+  { id: 'panLeft', name: 'Pan Left', hint: 'Drift left across the whole clip' },
+  { id: 'panRight', name: 'Pan Right', hint: 'Drift right across the whole clip' },
+  { id: 'popIn', name: 'Pop In', hint: 'Scale up from nothing with a little bounce' },
+  { id: 'fadeInOut', name: 'Fade In/Out', hint: 'Fade opacity in at the start and out at the end' },
+  { id: 'shake', name: 'Shake', hint: 'Camera-shake hit at the start of the clip' },
+];
+
+function AnimationSection({ clip }: { clip: Clip }) {
+  const apply = (a: AnimPreset, name: string) => {
+    const s = useStore.getState();
+    s.applyAnimation(clip.id, a);
+    s.toast(a === 'none' ? 'Animation removed' : `${name} applied. Tweak the keyframes in Motion or on the timeline.`);
+  };
+  return (
+    <Section title="Animation">
+      <div className="chip-row">
+        {ANIMATIONS.map((a) => (
+          <button key={a.id} className="chip" title={a.hint} onClick={() => apply(a.id, a.name)}>
+            {a.name}
+          </button>
+        ))}
+        <button className="chip" title="Remove motion keyframes and go back to the resting pose" onClick={() => apply('none', 'None')}>
+          None
+        </button>
+      </div>
+    </Section>
+  );
+}
+
 function PipSection({ clip, lt }: { clip: Clip; lt: number }) {
   const st = useStore.getState;
   const scale = propAt(clip, 'scale', lt);

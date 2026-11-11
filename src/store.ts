@@ -17,6 +17,8 @@ import {
 } from './engine/project';
 import { MOTION_KEYS, PROP_MAP, propAt } from './engine/props';
 
+export type AnimPreset = 'none' | 'zoomIn' | 'zoomOut' | 'panLeft' | 'panRight' | 'popIn' | 'fadeInOut' | 'shake';
+
 export type Tool = 'select' | 'razor' | 'ripple' | 'slip';
 
 interface Toast {
@@ -78,6 +80,7 @@ interface State {
   deleteKeysAt: (id: string, t: number) => void;
   setEaseAt: (id: string, t: number, ease: Ease) => void;
   insertPip: (mediaId: string) => void;
+  applyAnimation: (id: string, preset: AnimPreset) => void;
   resetProps: (id: string, keys: string[]) => void;
   addTrack: (type: TrackType) => void;
   removeTrack: (id: string) => void;
@@ -457,6 +460,67 @@ export const useStore = create<State>((set, get) => ({
       }
     });
   },
+  applyAnimation: (id, preset) =>
+    get().edit((p) => {
+      const c = p.clips.find((x) => x.id === id);
+      if (!c || c.kind === 'audio' || c.kind === 'adjust') return;
+      // Resting pose: un-keyed value, or the remembered base of a previous preset / keyframe pass.
+      const base: Record<string, number> = {};
+      for (const k of MOTION_KEYS) {
+        base[k] = c.keys[k]?.length ? (c.props[k] ?? PROP_MAP[k].def) : propAt(c, k, 0);
+        delete c.keys[k];
+        c.props[k] = base[k];
+      }
+      const d = c.dur;
+      const key = (k: string, pts: [number, number, Ease?][]) => {
+        c.keys[k] = pts.map(([t, v, ease]) => ({ t: Math.min(d, Math.max(0, t)), v, ease: ease ?? 'linear' }));
+      };
+      const s = base.scale;
+      const pan = (p.width * 0.08 * s) / 100;
+      const edge = Math.min(0.5, d / 3);
+      switch (preset) {
+        case 'zoomIn':
+          key('scale', [[0, s], [d, s * 1.25]]);
+          break;
+        case 'zoomOut':
+          key('scale', [[0, s * 1.25], [d, s]]);
+          break;
+        case 'panLeft':
+        case 'panRight': {
+          const dir = preset === 'panLeft' ? 1 : -1;
+          c.props.scale = s * 1.2;
+          key('x', [[0, base.x + dir * pan], [d, base.x - dir * pan]]);
+          break;
+        }
+        case 'popIn': {
+          const t1 = Math.min(0.25, d / 3);
+          const t2 = Math.min(0.4, d / 2);
+          key('scale', [[0, 0, 'easeOut'], [t1, s * 1.08, 'easeInOut'], [t2, s]]);
+          key('opacity', [[0, 0, 'easeOut'], [t1, base.opacity]]);
+          break;
+        }
+        case 'fadeInOut':
+          key('opacity', [[0, 0, 'easeInOut'], [edge, base.opacity], [d - edge, base.opacity, 'easeInOut'], [d, 0]]);
+          break;
+        case 'shake': {
+          // Short camera-shake hit at the start of the clip, settling back to rest.
+          const amp = p.width * 0.015;
+          const len = Math.min(d, 0.6);
+          const n = Math.max(2, Math.round(len * 20));
+          const pts: [number, number, Ease?][] = [];
+          const ptsY: [number, number, Ease?][] = [];
+          for (let i = 0; i <= n; i++) {
+            const t = (i / n) * len;
+            const damp = i === n ? 0 : 1 - i / n;
+            pts.push([t, base.x + damp * amp * Math.sin(i * 2.7)]);
+            ptsY.push([t, base.y + damp * amp * Math.cos(i * 3.9)]);
+          }
+          key('x', pts);
+          key('y', ptsY);
+          break;
+        }
+      }
+    }),
   deleteKeysAt: (id, t) =>
     get().edit((p) => {
       const c = p.clips.find((x) => x.id === id);

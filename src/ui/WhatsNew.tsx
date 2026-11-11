@@ -3,7 +3,7 @@ import { useStore } from '../store';
 import { Icon } from './Icon';
 
 /** Bump when there is a new announcement; each id is shown once per device. */
-const SEEN_KEY = 'fs-whatsnew-keyframes-pip';
+const SEEN_KEY = 'fs-whatsnew-1.2.0';
 
 export function shouldShowWhatsNew() {
   try {
@@ -47,7 +47,7 @@ export function WhatsNew() {
       <div className="tour-dim" onClick={close} />
       <div className="tour-card whatsnew">
         <div className="wn-tag">New</div>
-        <div className="tour-title">Introducing Keyframes and PiP for videos</div>
+        <div className="tour-title">What's new in F.S. Editor 1.2</div>
         <div className="wn-feature">
           <span className="wn-ico">
             <Icon name="keyframe" size={18} />
@@ -69,6 +69,29 @@ export function WhatsNew() {
             <p>
               Pick a video or image in Project Media and hit <b>PiP</b>. It lands over your video in the corner. Choose position, size, a circle, heart or star
               shape and a border under <b>Picture in Picture</b> in Effect Controls.
+            </p>
+          </div>
+        </div>
+        <div className="wn-feature">
+          <span className="wn-ico">
+            <Icon name="wand" size={18} />
+          </span>
+          <div>
+            <b>One-click animations</b>
+            <p>
+              Zoom In, Zoom Out, Pan, Pop In, Fade In/Out and Shake under <b>Animation</b> in Effect Controls. They're regular keyframes, so you can tweak them
+              afterwards.
+            </p>
+          </div>
+        </div>
+        <div className="wn-feature">
+          <span className="wn-ico">
+            <Icon name="sparkle" size={18} />
+          </span>
+          <div>
+            <b>Pixelate</b>
+            <p>
+              New mosaic effect under <b>Effects</b>, keyframeable. Put it on an adjustment layer to censor everything below.
             </p>
           </div>
         </div>
