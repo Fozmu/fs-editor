@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld('fsDesktop', {
   exportEnd: invoke('ffmpeg:exportEnd'),
   installUpdate: invoke('update:install'),
   checkUpdate: invoke('update:check'),
+  cloudCachePath: invoke('cloud:cachePath'),
+  cloudUpload: invoke('cloud:upload'),
+  cloudDownload: invoke('cloud:download'),
   pathForFile: (file) => {
     try {
       return webUtils.getPathForFile(file) || null;
@@ -31,7 +34,7 @@ contextBridge.exposeInMainWorld('fsDesktop', {
     }
   },
   on: (channel, cb) => {
-    const allowed = ['menu', 'project:openPath', 'update:status', 'ffmpeg:progress'];
+    const allowed = ['menu', 'project:openPath', 'update:status', 'ffmpeg:progress', 'cloud:progress'];
     if (!allowed.includes(channel)) throw new Error('Channel not allowed: ' + channel);
     const fn = (_e, ...args) => cb(...args);
     ipcRenderer.on(channel, fn);

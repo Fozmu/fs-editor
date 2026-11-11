@@ -10,6 +10,7 @@ import type { Project } from '../types';
 import { Icon } from './Icon';
 import { downloadBlob } from './actions';
 import { MOD, Modal } from './common';
+import { AccountDialog, CloudProjects } from './Cloud';
 
 export function Dialogs() {
   const dialog = useStore((s) => s.dialog);
@@ -18,6 +19,7 @@ export function Dialogs() {
   if (dialog === 'settings') return <SettingsDialog onClose={close} />;
   if (dialog === 'projects') return <ProjectsDialog onClose={close} />;
   if (dialog === 'shortcuts') return <ShortcutsDialog onClose={close} />;
+  if (dialog === 'account') return <AccountDialog onClose={close} />;
   return null;
 }
 
@@ -359,6 +361,7 @@ function ProjectsDialog({ onClose }: { onClose: () => void }) {
           </div>
         ))}
       </div>
+      <CloudProjects localIds={new Set(list?.map((p) => p.id) ?? [])} onOpened={onClose} />
       <div className="note">
         {desktop
           ? 'Projects autosave to the app library. Use File → Save to keep a .fsproj next to your footage; media is referenced from its original location.'

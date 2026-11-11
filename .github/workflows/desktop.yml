@@ -23,6 +23,11 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
+        env:
+          # Cloud accounts (optional): left empty, the app builds without any sign-in UI. See cloud/README.md.
+          VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          VITE_CLOUD_API: ${{ vars.CLOUD_API_URL }}
       # Publishing on main is idempotent: electron-builder only creates a release when
       # package.json's version has no published release yet, so bump the version to ship.
       - name: Build installer

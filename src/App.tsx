@@ -17,6 +17,7 @@ import { importViaPicker } from './ui/actions';
 import { DesktopUI } from './ui/DesktopUI';
 import { saveProjectFile } from './ui/projectActions';
 import { desktop } from './desktop';
+import { CloudButtons } from './ui/Cloud';
 
 function usePersistence() {
   const [ready, setReady] = useState(false);
@@ -192,6 +193,7 @@ export default function App() {
               <Icon name="download" size={14} /> Save
             </button>
           )}
+          <CloudButtons />
           <button className="btn ghost" onClick={importViaPicker} title={`Import media (${MOD}+I)`}>
             <Icon name="upload" size={14} /> Import
           </button>

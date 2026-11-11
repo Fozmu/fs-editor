@@ -1,0 +1,25 @@
+# F.S. Editor cloud API — Cloudflare Worker in front of an R2 bucket.
+# Setup: see cloud/README.md
+name = "fs-editor-cloud"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "fs-editor-media"
+
+[vars]
+# Both values below are normally injected by .github/workflows/cloud.yml from repo variables.
+# Your Supabase project URL (Project Settings → API). Public, not a secret.
+SUPABASE_URL = "https://YOUR-PROJECT.supabase.co"
+# Supabase anon / publishable key (Project Settings → API). Public, not a secret.
+SUPABASE_ANON_KEY = ""
+R2_BUCKET = "fs-editor-media"
+# Per-account storage cap in GB. Keeps your R2 bill bounded if strangers sign up.
+QUOTA_GB = "50"
+
+# Secrets (set with `npx wrangler secret put NAME`, never commit them):
+#   R2_ACCOUNT_ID         Cloudflare account id
+#   R2_ACCESS_KEY_ID      R2 API token access key id
+#   R2_SECRET_ACCESS_KEY  R2 API token secret
+#   SUPABASE_JWT_SECRET   optional, only for Supabase projects on the legacy HS256 JWT secret
