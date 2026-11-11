@@ -173,6 +173,10 @@ export function installShortcuts() {
         st.set({ zoom: Math.min(800, Math.max(1, ((el?.clientWidth ?? 1000) - 40) / d)) });
         return handled();
       }
+      case 'p':
+      case 'P':
+        if (st.selection.length === 1) st.toggleMotionKey(st.selection[0]);
+        return handled();
       case 't':
       case 'T':
         addTextPreset(TEXT_PRESETS[0]);

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useStore } from '../store';
 import { Player } from '../engine/playback';
 import { clipEnd, formatTC, projectDuration } from '../engine/project';
-import { propAt } from '../engine/props';
+import { MOTION_KEYS, propAt } from '../engine/props';
 import type { ClipRect } from '../engine/render';
 import { Icon } from './Icon';
 import { downloadBlob } from './actions';
@@ -192,6 +192,34 @@ function Overlay({ k }: { k: number }) {
   );
 }
 
+/** InShot-style keyframing: one button keys all motion props of the selected clip at the playhead. */
+function KeyframeButtons() {
+  const clip = useStore((s) => (s.selection.length === 1 ? s.project.clips.find((c) => c.id === s.selection[0]) : undefined));
+  const playhead = useStore((s) => s.playhead);
+  const fps = useStore((s) => s.project.fps);
+  const st = useStore.getState;
+  if (!clip || clip.kind === 'audio') return null;
+  const lt = Math.min(clip.dur, Math.max(0, playhead - clip.start));
+  const tol = 0.5 / fps;
+  const times = [...new Set(Object.values(clip.keys).flatMap((ks) => ks.map((k) => k.t)))].sort((a, b) => a - b);
+  const onKey = MOTION_KEYS.some((k) => clip.keys[k]?.some((kf) => Math.abs(kf.t - lt) < tol));
+  const prev = [...times].reverse().find((t) => t < lt - tol);
+  const next = times.find((t) => t > lt + tol);
+  return (
+    <div className="kf-nav viewer-kf">
+      <button disabled={prev === undefined} onClick={() => prev !== undefined && st().setPlayhead(clip.start + prev)} title="Previous keyframe">
+        <Icon name="chevL" size={12} />
+      </button>
+      <button className={onKey ? 'on' : ''} onClick={() => st().toggleMotionKey(clip.id)} title={onKey ? 'Remove keyframe (P)' : 'Add keyframe (P): then move, scale or fade the clip at another time'}>
+        <Icon name="keyframe" size={13} />
+      </button>
+      <button disabled={next === undefined} onClick={() => next !== undefined && st().setPlayhead(clip.start + next)} title="Next keyframe">
+        <Icon name="chevR" size={12} />
+      </button>
+    </div>
+  );
+}
+
 function Transport({
   quality,
   setQuality,
@@ -264,6 +292,7 @@ function Transport({
       >
         <Icon name="camera" />
       </button>
+      <KeyframeButtons />
       <span className="spacer" />
       <button className={'ibtn' + (safe ? ' on' : '')} title="Safe margins" onClick={() => setSafe(!safe)}>
         <Icon name="fit" />

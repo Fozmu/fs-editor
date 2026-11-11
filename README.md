@@ -51,9 +51,14 @@ Every pull request also builds the installer — download it from the workflow r
 - Motion: position, scale, width/height, rotation, opacity; drag/scale directly in the viewer
 - Crop & corner radius, blend modes, flip, fit/fill/stretch
 - Color: brightness, contrast, saturation, hue, temperature, tint, B&W, sepia, invert + 11 looks
-- Effects: Gaussian blur, vignette, drop shadow, adjustment layers
+- Effects: Gaussian blur, pixelate (mosaic), vignette, drop shadow, adjustment layers
 - Chroma key (green / blue screen): key color + screen eyedropper, similarity, smoothness, spill reduction (GPU)
 - Keyframes with linear / ease / hold interpolation
+- One-click keyframes (◆ under the viewer or `P`): keys position, scale, rotation and opacity together; drag diamonds on the timeline to retime, right-click for easing
+
+**Animation** — one-click Zoom In / Zoom Out (Ken Burns), Pan Left / Right, Pop In, Fade In/Out and Shake; written as normal keyframes so they stay editable
+
+**Picture in Picture** — add any video or image as an overlay (PiP button or right-click in Project Media), 9-way corner placement, size presets, circle / heart / star / rounded masks, border color & width
 - Speed 5%–1600%, detach audio
 
 **Titles** — 12 presets, any font/size/weight, stroke, shadow, background box, typewriter animation

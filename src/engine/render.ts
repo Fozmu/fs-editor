@@ -1,4 +1,4 @@
-import type { Clip, Project, TextStyle, TransitionType } from '../types';
+import type { Clip, MaskShape, Project, TextStyle, TransitionType } from '../types';
 import { chromaKey } from './chroma';
 import { easeInOut, propAt } from './props';
 import { visualLayersAt, type ActiveLayer } from './project';
@@ -35,6 +35,31 @@ function getLayer(w: number, h: number) {
     layerCanvas.height = h;
   }
   return layerCanvas;
+}
+
+let mosaicCanvas: OffscreenCanvas | null = null;
+
+/** Mosaic: shrink the layer to one pixel per block, then blow it back up without smoothing. */
+function pixelate(L: OffscreenCanvasRenderingContext2D, W: number, H: number, block: number) {
+  if (block < 1.5) return;
+  const sw = Math.max(1, Math.ceil(W / block));
+  const sh = Math.max(1, Math.ceil(H / block));
+  if (!mosaicCanvas) mosaicCanvas = new OffscreenCanvas(sw, sh);
+  if (mosaicCanvas.width !== sw || mosaicCanvas.height !== sh) {
+    mosaicCanvas.width = sw;
+    mosaicCanvas.height = sh;
+  }
+  const m = mosaicCanvas.getContext('2d')!;
+  m.clearRect(0, 0, sw, sh);
+  m.imageSmoothingEnabled = true;
+  m.imageSmoothingQuality = 'medium';
+  m.drawImage(L.canvas, 0, 0, sw, sh);
+  L.save();
+  L.setTransform(1, 0, 0, 1, 0, 0);
+  L.globalCompositeOperation = 'copy';
+  L.imageSmoothingEnabled = false;
+  L.drawImage(mosaicCanvas, 0, 0, sw, sh, 0, 0, sw * block, sh * block);
+  L.restore();
 }
 
 /* ---------------- text ---------------- */
@@ -249,6 +274,41 @@ function tintAndVignette(L: OffscreenCanvasRenderingContext2D, c: Clip, lt: numb
   L.restore();
 }
 
+/* ---------------- masks ---------------- */
+
+/** Outline of the visible frame: rounded rect, or a shape centered in the box at its short side. */
+function shapePath(mask: MaskShape, x: number, y: number, w: number, h: number, radius: number): Path2D {
+  const p = new Path2D();
+  const cx = x + w / 2;
+  const cy = y + h / 2;
+  const r = Math.min(w, h) / 2;
+  switch (mask) {
+    case 'circle':
+      p.arc(cx, cy, r, 0, Math.PI * 2);
+      break;
+    case 'heart':
+      p.moveTo(cx, cy + r * 0.9);
+      p.bezierCurveTo(cx - r * 1.35, cy + r * 0.05, cx - r * 0.95, cy - r * 1.1, cx, cy - r * 0.5);
+      p.bezierCurveTo(cx + r * 0.95, cy - r * 1.1, cx + r * 1.35, cy + r * 0.05, cx, cy + r * 0.9);
+      p.closePath();
+      break;
+    case 'star': {
+      const oy = cy + r * 0.1;
+      for (let i = 0; i < 10; i++) {
+        const a = -Math.PI / 2 + (i * Math.PI) / 5;
+        const rr = i % 2 ? r * 0.45 : r;
+        if (i) p.lineTo(cx + Math.cos(a) * rr, oy + Math.sin(a) * rr);
+        else p.moveTo(cx + Math.cos(a) * rr, oy + Math.sin(a) * rr);
+      }
+      p.closePath();
+      break;
+    }
+    default:
+      p.roundRect(x, y, w, h, Math.min(radius, w / 2, h / 2));
+  }
+  return p;
+}
+
 /* ---------------- main ---------------- */
 
 export interface RenderOptions {
@@ -298,6 +358,7 @@ function drawLayer(ctx: Canvas2D, p: Project, layer: ActiveLayer, src: SourcePro
     L.filter = colorFilter(c, lt, tr.blur, k);
     L.drawImage(ctx.canvas as CanvasImageSource, 0, 0);
     L.filter = 'none';
+    pixelate(L, W, H, propAt(c, 'pixelate', lt) * k);
     tintAndVignette(L, c, lt, W, H, cx, cy, bw, bh);
   } else {
     let source: Source | null = null;
@@ -366,11 +427,10 @@ function drawLayer(ctx: Canvas2D, p: Project, layer: ActiveLayer, src: SourcePro
     const dw = bw * cw;
     const dh = bh * ch;
     const radius = propAt(c, 'radius', lt) * k * tr.scale;
-    if (radius > 0) {
-      L.beginPath();
-      L.roundRect(x0, y0, dw, dh, Math.min(radius, dw / 2, dh / 2));
-      L.clip();
-    }
+    const border = propAt(c, 'border', lt) * k * tr.scale;
+    const mask = c.mask ?? 'none';
+    const shape = mask !== 'none' || radius > 0 || border > 0 ? shapePath(mask, x0, y0, dw, dh, radius) : null;
+    if (shape) L.clip(shape);
     L.filter = colorFilter(c, lt, tr.blur, k);
     if (c.kind === 'solid') {
       L.fillStyle = c.color || '#000';
@@ -392,7 +452,15 @@ function drawLayer(ctx: Canvas2D, p: Project, layer: ActiveLayer, src: SourcePro
       L.drawImage(source as CanvasImageSource, cl * sw, ct * sh, cw * sw, ch * sh, x0, y0, dw, dh);
     }
     L.filter = 'none';
+    if (shape && border > 0) {
+      // Stroke is clipped to the shape, so the border grows inward like InShot's PiP outline.
+      L.strokeStyle = c.borderColor || '#ffffff';
+      L.lineWidth = border * 2;
+      L.lineJoin = 'round';
+      L.stroke(shape);
+    }
     L.setTransform(1, 0, 0, 1, 0, 0);
+    pixelate(L, W, H, propAt(c, 'pixelate', lt) * k);
     tintAndVignette(L, c, lt, W, H, cx, cy, bw, bh);
   }
 
