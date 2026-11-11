@@ -42,7 +42,7 @@ interface State {
   tool: Tool;
   snapping: boolean;
   clipboard: Clip[];
-  dialog: null | 'export' | 'settings' | 'projects' | 'shortcuts' | 'tour' | 'whatsnew';
+  dialog: null | 'export' | 'settings' | 'projects' | 'shortcuts' | 'tour' | 'whatsnew' | 'account';
   toasts: Toast[];
 
   edit: (fn: (p: Project) => void, history?: boolean) => void;

@@ -32,6 +32,10 @@ Needs repo secret `RELEASES_TOKEN`: a fine-grained token with **Contents: read &
 
 Every pull request also builds the installer — download it from the workflow run's **Artifacts**.
 
+## Cloud accounts (optional)
+
+Sign in inside the app, press **Sync**, and open the project with its videos on another PC from **Projects → Cloud**. Accounts run on Supabase Auth, files on Cloudflare R2 through a small Worker in [`cloud/`](cloud/README.md). Builds without the cloud settings have no account UI and stay fully local.
+
 ## Features
 
 **Project & media**

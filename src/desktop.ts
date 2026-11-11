@@ -19,11 +19,16 @@ export interface DesktopBridge {
   exportEnd(id: number, cancel?: boolean): Promise<void>;
   installUpdate(): Promise<void>;
   checkUpdate(): Promise<void>;
+  /** Where a downloaded cloud media file lives on this PC. */
+  cloudCachePath(mediaId: string, name: string): Promise<string>;
+  cloudUpload(path: string, url: string, jobId: string): Promise<void>;
+  cloudDownload(url: string, dest: string, jobId: string): Promise<void>;
   pathForFile(f: File): string | null;
   on(channel: 'menu', cb: (cmd: string) => void): () => void;
   on(channel: 'project:openPath', cb: (path: string) => void): () => void;
   on(channel: 'update:status', cb: (s: UpdateStatus) => void): () => void;
   on(channel: 'ffmpeg:progress', cb: (p: { jobId: string; frac: number }) => void): () => void;
+  on(channel: 'cloud:progress', cb: (p: { jobId: string; bytes: number }) => void): () => void;
 }
 
 export type FfmpegCodec = 'prores' | 'h265' | 'h264' | 'gif';

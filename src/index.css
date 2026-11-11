@@ -1340,3 +1340,41 @@ kbd {
   width: 16px;
   background: var(--accent);
 }
+
+/* ---------- cloud / account ---------- */
+.cloud-acct {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 340px;
+}
+.cloud-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--tx2);
+}
+.cloud-field .txt {
+  width: 100%;
+}
+.cloud-err {
+  color: var(--danger);
+  font-size: 12px;
+}
+.cloud-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px dashed var(--line2);
+  border-radius: 8px;
+  color: var(--tx2);
+}
+.cloud-box .grow {
+  flex: 1;
+}
+.cloud-sec {
+  margin-top: 14px;
+}

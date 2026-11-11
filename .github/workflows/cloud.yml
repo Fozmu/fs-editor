@@ -1,0 +1,39 @@
+name: Cloud API
+
+# Deploys the accounts/storage Worker in cloud/ to Cloudflare. Does nothing until the
+# repo variables/secrets from cloud/README.md exist.
+on:
+  push:
+    branches: [main]
+    paths: ['cloud/**', '.github/workflows/cloud.yml']
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    if: ${{ vars.SUPABASE_URL != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - run: npm ci
+        working-directory: cloud
+      - run: npx tsc --noEmit
+        working-directory: cloud
+      - name: Create bucket (first run) and deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: cloud
+          preCommands: npx wrangler r2 bucket create fs-editor-media || true
+          command: deploy --var SUPABASE_URL:${{ vars.SUPABASE_URL }} --var SUPABASE_ANON_KEY:${{ vars.SUPABASE_ANON_KEY }}
+          secrets: |
+            R2_ACCOUNT_ID
+            R2_ACCESS_KEY_ID
+            R2_SECRET_ACCESS_KEY
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}

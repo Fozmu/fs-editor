@@ -6,7 +6,9 @@ const fs = require('node:fs');
 const fsp = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
+const https = require('node:https');
 const { Readable } = require('node:stream');
+const { pipeline } = require('node:stream/promises');
 const { pathToFileURL } = require('node:url');
 
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
@@ -56,7 +58,7 @@ const CSP = [
   "font-src 'self' data:",
   "img-src 'self' data: blob: media:",
   "media-src 'self' blob: media:",
-  "connect-src 'self' blob: media:",
+  "connect-src 'self' blob: media: https:",
   "worker-src 'self' blob:",
 ].join('; ');
 
@@ -334,6 +336,70 @@ async function exportStart(opts) {
 const openFiles = new Map();
 let fileSeq = 0;
 
+/* ---------------- cloud transfers ---------------- */
+
+// Media goes straight between disk and R2 via presigned URLs, streamed so multi-GB files never sit in memory.
+
+function cloudCachePath(id, name) {
+  const ext = path.extname(String(name || '')).replace(/[^.\w]/g, '').slice(0, 10);
+  return path.join(app.getPath('userData'), 'cloud-media', String(id).replace(/[^\w-]/g, '') + ext);
+}
+
+function httpError(res) {
+  return new Promise((_, reject) => {
+    let body = '';
+    res.setEncoding('utf8');
+    res.on('data', (c) => body.length < 2000 && (body += c));
+    res.on('end', () => reject(new Error(`Cloud storage error ${res.statusCode}: ${body.replace(/<[^>]+>/g, ' ').trim().slice(0, 200)}`)));
+    res.on('error', reject);
+  });
+}
+
+async function cloudUpload(file, url, jobId) {
+  const { size } = await fsp.stat(file);
+  await new Promise((resolve, reject) => {
+    const req = https.request(url, { method: 'PUT', headers: { 'Content-Length': size } }, (res) => {
+      if (res.statusCode >= 300) return httpError(res).catch(reject);
+      res.resume();
+      res.on('end', resolve);
+    });
+    req.on('error', reject);
+    let sent = 0;
+    let last = 0;
+    const src = fs.createReadStream(file);
+    src.on('data', (c) => {
+      sent += c.length;
+      const now = Date.now();
+      if (now - last > 150) {
+        last = now;
+        send('cloud:progress', { jobId, bytes: sent });
+      }
+    });
+    src.on('error', (e) => req.destroy(e));
+    src.pipe(req);
+  });
+}
+
+async function cloudDownload(url, dest, jobId) {
+  if (path.dirname(dest) !== path.dirname(cloudCachePath('x', ''))) throw new Error('Bad download location');
+  await fsp.mkdir(path.dirname(dest), { recursive: true });
+  const part = dest + '.part';
+  const res = await new Promise((resolve, reject) => https.get(url, resolve).on('error', reject));
+  if (res.statusCode >= 300) await httpError(res);
+  let got = 0;
+  let last = 0;
+  res.on('data', (c) => {
+    got += c.length;
+    const now = Date.now();
+    if (now - last > 150) {
+      last = now;
+      send('cloud:progress', { jobId, bytes: got });
+    }
+  });
+  await pipeline(res, fs.createWriteStream(part));
+  await fsp.rename(part, dest);
+}
+
 function registerIpc() {
   const mediaFilters = [
     { name: 'Media', extensions: ['mp4', 'm4v', 'mov', 'webm', 'mkv', 'avi', 'mts', 'm2ts', 'mxf', 'wmv', 'flv', '3gp', 'ogv', 'mp3', 'wav', 'ogg', 'oga', 'm4a', 'aac', 'flac', 'opus', 'aiff', 'aif', 'wma', 'png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif', 'svg'] },
@@ -439,6 +505,10 @@ function registerIpc() {
 
   ipcMain.handle('update:install', () => updater?.quitAndInstall());
   ipcMain.handle('update:check', () => checkForUpdates(true));
+
+  ipcMain.handle('cloud:cachePath', (_e, id, name) => cloudCachePath(id, name));
+  ipcMain.handle('cloud:upload', (_e, file, url, jobId) => cloudUpload(file, url, jobId));
+  ipcMain.handle('cloud:download', (_e, url, dest, jobId) => cloudDownload(url, dest, jobId));
 }
 
 /* ---------------- lifecycle ---------------- */
