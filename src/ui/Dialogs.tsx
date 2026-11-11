@@ -392,6 +392,7 @@ export const SHORTCUTS: [string, string][] = [
   [MOD + '+A', 'Select all'],
   ['Esc', 'Deselect'],
   ['M', 'Add marker'],
+  ['P', 'Add / remove keyframe on selected clip'],
   ['I / O', 'Mark in / out'],
   ['Alt+X', 'Clear in / out'],
   ['N', 'Toggle snapping'],
